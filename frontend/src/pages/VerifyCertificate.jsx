@@ -74,8 +74,36 @@ export default function VerifyCertificate() {
     if (e.target.files && e.target.files[0]) {
       setQrFile(e.target.files[0]);
       setQrPreview(URL.createObjectURL(e.target.files[0]));
+      setQrData(null); // Reset previous scan data
+      setVerificationResult(null); // Reset previous verification
     }
   };
+
+  // Scan uploaded image for QR code
+  useEffect(() => {
+    if (qrFile && qrPreview && qrFile.type.startsWith('image/')) {
+      const img = new Image();
+      img.src = qrPreview;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        context.drawImage(img, 0, 0);
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "attemptBoth",
+        });
+
+        if (code) {
+          setQrData(code.data);
+          // Optional: Visualize success
+        } else {
+          // console.log("No QR code found in uploaded image");
+        }
+      };
+    }
+  }, [qrFile, qrPreview]);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -97,8 +125,10 @@ export default function VerifyCertificate() {
     };
   }, []);
 
+  // Only enable verification if we have a reference number OR successfully scanned QR data
+  // Just having a file (qrFile) is not enough if we couldn't read the QR code
   const hasInputForVerification =
-    (reference && reference.trim().length > 0) || qrFile || qrData;
+    (reference && reference.trim().length > 0) || qrData;
 
   const handleStartCamera = async () => {
     setCameraError('');
@@ -108,21 +138,21 @@ export default function VerifyCertificate() {
     try {
       let stream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
             facingMode: 'environment',
             width: { ideal: 1280 },
             height: { ideal: 720 }
-          } 
+          }
         });
       } catch (err) {
         triedUserCamera = true;
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
             facingMode: 'user',
             width: { ideal: 1280 },
             height: { ideal: 720 }
-          } 
+          }
         });
       }
       streamRef.current = stream;
@@ -191,7 +221,16 @@ export default function VerifyCertificate() {
     const trimmedReference = reference.trim();
     const effectiveQrData = scannedData || qrData;
 
-    if (!trimmedReference && !qrFile && !effectiveQrData) {
+    // Check if we have valid input
+    if (!trimmedReference && !effectiveQrData) {
+      // If a file was uploaded but no QR data was extracted, show specific error
+      if (qrFile && !effectiveQrData) {
+        setVerificationResult({
+          isValid: false,
+          message: 'Could not automatically detect a QR code. Please ensure the image is clear or try entering the Reference Number manually.',
+          details: null
+        });
+      }
       return;
     }
 
@@ -210,7 +249,7 @@ export default function VerifyCertificate() {
         formData.append('file', qrFile);
       }
 
-      const response = await fetch('/api/verify-certificate', {
+      const response = await fetch('/api/cert/verify', {
         method: 'POST',
         body: formData,
         headers: {
@@ -229,23 +268,23 @@ export default function VerifyCertificate() {
         typeof data.valid === 'boolean'
           ? data.valid
           : typeof data.isValid === 'boolean'
-          ? data.isValid
-          : false;
+            ? data.isValid
+            : false;
 
       const details = isValid
         ? {
-            certificateId:
-              data.certificateId ||
-              data.id ||
-              trimmedReference ||
-              effectiveQrData ||
-              (qrFile && qrFile.name) ||
-              '-',
-            recipientName: data.recipientName || data.holderName || '-',
-            certificateType: data.certificateType || data.type || '-',
-            issueDate: data.issueDate || data.issuedAt || '-',
-            issuingAuthority: data.issuingAuthority || data.issuer || '-',
-          }
+          certificateId:
+            data.certificateId ||
+            data.id ||
+            trimmedReference ||
+            effectiveQrData ||
+            (qrFile && qrFile.name) ||
+            '-',
+          recipientName: data.recipientName || data.holderName || '-',
+          certificateType: data.certificateType || data.type || '-',
+          issueDate: data.issueDate || data.issuedAt || '-',
+          issuingAuthority: data.issuingAuthority || data.issuer || '-',
+        }
         : null;
 
       setVerificationResult({
@@ -303,21 +342,19 @@ export default function VerifyCertificate() {
             </p>
             <div className="flex mb-4 rounded-lg overflow-hidden border border-gray-200">
               <button
-                className={`flex-1 py-2 text-sm font-semibold transition-colors ${
-                  tab === 'reference'
-                    ? 'bg-indigo-50 text-indigo-700'
-                    : 'bg-white text-gray-500'
-                }`}
+                className={`flex-1 py-2 text-sm font-semibold transition-colors ${tab === 'reference'
+                  ? 'bg-indigo-50 text-indigo-700'
+                  : 'bg-white text-gray-500'
+                  }`}
                 onClick={() => setTab('reference')}
               >
                 Reference Number
               </button>
               <button
-                className={`flex-1 py-2 text-sm font-semibold transition-colors ${
-                  tab === 'qr'
-                    ? 'bg-indigo-50 text-indigo-700'
-                    : 'bg-white text-gray-500'
-                }`}
+                className={`flex-1 py-2 text-sm font-semibold transition-colors ${tab === 'qr'
+                  ? 'bg-indigo-50 text-indigo-700'
+                  : 'bg-white text-gray-500'
+                  }`}
                 onClick={() => setTab('qr')}
               >
                 QR Code
@@ -342,11 +379,10 @@ export default function VerifyCertificate() {
                 <div className="flex gap-3 mb-4">
                   <button
                     type="button"
-                    className={`flex-1 flex items-center justify-center gap-2 border rounded-md py-2 px-4 font-semibold transition ${
-                      qrMode === 'upload'
-                        ? 'bg-white border-gray-300 text-gray-900 shadow'
-                        : 'bg-gray-100 border-gray-200 text-gray-500'
-                    }`}
+                    className={`flex-1 flex items-center justify-center gap-2 border rounded-md py-2 px-4 font-semibold transition ${qrMode === 'upload'
+                      ? 'bg-white border-gray-300 text-gray-900 shadow'
+                      : 'bg-gray-100 border-gray-200 text-gray-500'
+                      }`}
                     onClick={() => setQrMode('upload')}
                   >
                     <svg
@@ -366,11 +402,10 @@ export default function VerifyCertificate() {
                   </button>
                   <button
                     type="button"
-                    className={`flex-1 flex items-center justify-center gap-2 border rounded-md py-2 px-4 font-semibold transition ${
-                      qrMode === 'camera'
-                        ? 'bg-black text-white border-gray-900 shadow'
-                        : 'bg-gray-100 border-gray-200 text-gray-500'
-                    }`}
+                    className={`flex-1 flex items-center justify-center gap-2 border rounded-md py-2 px-4 font-semibold transition ${qrMode === 'camera'
+                      ? 'bg-black text-white border-gray-900 shadow'
+                      : 'bg-gray-100 border-gray-200 text-gray-500'
+                      }`}
                     onClick={() => setQrMode('camera')}
                   >
                     <svg
@@ -455,6 +490,18 @@ export default function VerifyCertificate() {
                             ({qrFile.type || 'Unknown type'})
                           </span>
                         </div>
+                        {qrFile.type && !qrFile.type.startsWith('image/') && (
+                          <div className="text-amber-600 text-sm mb-2 bg-amber-50 p-2 rounded">
+                            Note: Automatic QR scanning is only available for image files.
+                            For PDFs, please enter the Reference Number manually or convert to image.
+                          </div>
+                        )}
+                        {qrData && qrFile.type && qrFile.type.startsWith('image/') && (
+                          <div className="text-green-600 text-sm mb-2 bg-green-50 p-2 rounded flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                            QR Code detected in image!
+                          </div>
+                        )}
                         {qrFile.type && qrFile.type.startsWith('image/') && (
                           <img
                             src={qrPreview}
@@ -508,39 +555,34 @@ export default function VerifyCertificate() {
                           {/* Scanning overlay */}
                           <div className="absolute inset-0 flex items-center justify-center">
                             <div
-                              className={`w-64 h-64 border-2 ${
-                                scanningStatus === 'found'
-                                  ? 'border-green-500'
-                                  : 'border-white'
-                              } rounded-lg relative transition-colors duration-300`}
+                              className={`w-64 h-64 border-2 ${scanningStatus === 'found'
+                                ? 'border-green-500'
+                                : 'border-white'
+                                } rounded-lg relative transition-colors duration-300`}
                             >
                               <div
-                                className={`absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 ${
-                                  scanningStatus === 'found'
-                                    ? 'border-green-500'
-                                    : 'border-white'
-                                } transition-colors duration-300`}
+                                className={`absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 ${scanningStatus === 'found'
+                                  ? 'border-green-500'
+                                  : 'border-white'
+                                  } transition-colors duration-300`}
                               ></div>
                               <div
-                                className={`absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 ${
-                                  scanningStatus === 'found'
-                                    ? 'border-green-500'
-                                    : 'border-white'
-                                } transition-colors duration-300`}
+                                className={`absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 ${scanningStatus === 'found'
+                                  ? 'border-green-500'
+                                  : 'border-white'
+                                  } transition-colors duration-300`}
                               ></div>
                               <div
-                                className={`absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 ${
-                                  scanningStatus === 'found'
-                                    ? 'border-green-500'
-                                    : 'border-white'
-                                } transition-colors duration-300`}
+                                className={`absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 ${scanningStatus === 'found'
+                                  ? 'border-green-500'
+                                  : 'border-white'
+                                  } transition-colors duration-300`}
                               ></div>
                               <div
-                                className={`absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 ${
-                                  scanningStatus === 'found'
-                                    ? 'border-green-500'
-                                    : 'border-white'
-                                } transition-colors duration-300`}
+                                className={`absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 ${scanningStatus === 'found'
+                                  ? 'border-green-500'
+                                  : 'border-white'
+                                  } transition-colors duration-300`}
                               ></div>
                               <div className="absolute inset-0 bg-black bg-opacity-20"></div>
                               {scanningStatus === 'scanning' && (
@@ -573,13 +615,12 @@ export default function VerifyCertificate() {
                           </div>
                           <div className="absolute bottom-4 left-0 right-0 text-center">
                             <p
-                              className={`text-sm py-2 px-4 rounded-full inline-block ${
-                                scanningStatus === 'found'
-                                  ? 'bg-green-500 bg-opacity-50 text-white'
-                                  : scanningStatus === 'error'
+                              className={`text-sm py-2 px-4 rounded-full inline-block ${scanningStatus === 'found'
+                                ? 'bg-green-500 bg-opacity-50 text-white'
+                                : scanningStatus === 'error'
                                   ? 'bg-red-500 bg-opacity-50 text-white'
                                   : 'bg-black bg-opacity-50 text-white'
-                              }`}
+                                }`}
                             >
                               {scanningStatus === 'scanning' &&
                                 'Scanning for QR code...'}
@@ -630,11 +671,10 @@ export default function VerifyCertificate() {
             <div className="mt-6 flex justify-center">
               <button
                 type="button"
-                className={`inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-md font-semibold text-white transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
-                  hasInputForVerification && !loading
-                    ? 'bg-indigo-600 hover:bg-indigo-700'
-                    : 'bg-gray-300 cursor-not-allowed'
-                }`}
+                className={`inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-md font-semibold text-white transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${hasInputForVerification && !loading
+                  ? 'bg-indigo-600 hover:bg-indigo-700'
+                  : 'bg-gray-300 cursor-not-allowed'
+                  }`}
                 disabled={!hasInputForVerification || loading}
                 onClick={() => handleVerify()}
               >
@@ -667,19 +707,17 @@ export default function VerifyCertificate() {
           {verificationResult && (
             <div className="w-full max-w-xl mb-10">
               <div
-                className={`rounded-xl shadow-lg p-6 border ${
-                  verificationResult.isValid
-                    ? 'bg-green-50 border-green-400'
-                    : 'bg-red-50 border-red-400'
-                }`}
+                className={`rounded-xl shadow-lg p-6 border ${verificationResult.isValid
+                  ? 'bg-green-50 border-green-400'
+                  : 'bg-red-50 border-red-400'
+                  }`}
               >
                 <div className="flex items-center mb-3">
                   <span
-                    className={`mr-2 rounded-full p-1 ${
-                      verificationResult.isValid
-                        ? 'bg-green-100 text-green-600'
-                        : 'bg-red-100 text-red-600'
-                    }`}
+                    className={`mr-2 rounded-full p-1 ${verificationResult.isValid
+                      ? 'bg-green-100 text-green-600'
+                      : 'bg-red-100 text-red-600'
+                      }`}
                   >
                     {verificationResult.isValid ? (
                       <svg

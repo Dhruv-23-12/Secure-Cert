@@ -8,6 +8,7 @@ import QRCodeLib from 'qrcode';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import CertificateTypeSelector from '../components/CertificateTypeSelector';
 import CertificateGenerator from '../components/CertificateGenerator';
+import CertificatePreviewModal from '../components/CertificatePreviewModal';
 
 const stats = [
   { label: 'Total Certificates', value: 127, change: '+5 from last week' },
@@ -67,19 +68,49 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('add');
   const [showCertificateTypeSelector, setShowCertificateTypeSelector] = useState(false);
   const [selectedCertificateType, setSelectedCertificateType] = useState(null);
-  const [activityLog, setActivityLog] = useState(() => {
-    // Load from localStorage
-    const stored = localStorage.getItem('activityLog');
-    return stored ? JSON.parse(stored) : [];
-  });
+  const [activityLog, setActivityLog] = useState([]);
+  const [previewCert, setPreviewCert] = useState(null);
 
-  // Save activity log to localStorage whenever it changes
+  // Fetch certificates from API
+  const fetchCertificates = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch('/api/cert/list?limit=50', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Transform API data to match activity log format
+        const certs = data.data.certificates.map(cert => ({
+          type: 'Generated',
+          fileName: `${cert.certificateType}_${cert.studentName}`,
+          fileType: 'certificate',
+          date: new Date(cert.issueDate).toLocaleString(),
+          irn: cert.certificateId,
+          hash: cert.hashValue,
+          certificateType: cert.certificateType,
+          studentName: cert.studentName,
+          additionalData: cert.additionalData,
+          issueDate: cert.issueDate // Keep original date for preview
+        }));
+        setActivityLog(certs);
+      }
+    } catch (error) {
+      console.error('Error fetching certificates:', error);
+    }
+  };
+
   React.useEffect(() => {
-    localStorage.setItem('activityLog', JSON.stringify(activityLog));
-  }, [activityLog]);
+    fetchCertificates();
+  }, [activeTab]); // Refresh when tab changes
 
   const handleAddActivity = (activity) => {
     setActivityLog((prev) => [activity, ...prev]);
+    fetchCertificates(); // Refresh from server
   };
 
   // --- QR on Photo Section ---
@@ -124,7 +155,7 @@ export default function AdminDashboard() {
     setDeletedCertificates(prev => [...prev, certificate]);
     // Remove from active certificates
     setActivityLog(prev => prev.filter(item => item.irn !== certificate.irn));
-    
+
     // Update localStorage
     localStorage.setItem('deletedCertificates', JSON.stringify([...deletedCertificates, certificate]));
     localStorage.setItem('activityLog', JSON.stringify(activityLog.filter(item => item.irn !== certificate.irn)));
@@ -135,7 +166,7 @@ export default function AdminDashboard() {
     setActivityLog(prev => [...prev, certificate]);
     // Remove from deleted certificates
     setDeletedCertificates(prev => prev.filter(item => item.irn !== certificate.irn));
-    
+
     // Update localStorage
     localStorage.setItem('activityLog', JSON.stringify([...activityLog, certificate]));
     localStorage.setItem('deletedCertificates', JSON.stringify(deletedCertificates.filter(item => item.irn !== certificate.irn)));
@@ -193,10 +224,20 @@ export default function AdminDashboard() {
   };
 
   function handleActivityDownload(activity) {
-    // You can expand this logic to fetch the file or regenerate the certificate as needed
-    // For now, just alert the IRN/hash for demonstration
-    alert(`Download for IRN: ${activity.irn}\nHash: ${activity.hash}`);
-    // TODO: Integrate with your download logic (e.g., call a backend or reuse handleDownload logic)
+    if (activity.type === 'Generated' && activity.certificateType) {
+      // Open preview modal
+      setPreviewCert({
+        certificateType: activity.certificateType,
+        certificateId: activity.irn,
+        hashValue: activity.hash,
+        studentName: activity.studentName,
+        issueDate: activity.issueDate,
+        additionalData: activity.additionalData || {}
+      });
+    } else {
+      // Fallback for uploaded files (not implemented in this scope)
+      alert(`Download not available for this file type yet.\nIRN: ${activity.irn}`);
+    }
   }
 
   return (
@@ -270,20 +311,21 @@ export default function AdminDashboard() {
                 setShowCertificateTypeSelector(false);
               }}
               onSuccess={(certData) => {
-                handleAddActivity({
-                  type: 'Generated',
-                  fileName: `${selectedCertificateType}_${certData.studentName}`,
-                  fileType: 'certificate',
-                  date: new Date().toLocaleString(),
-                  irn: certData.id,
-                  hash: certData.hashValue || certData.id,
-                  certificateType: selectedCertificateType,
-                });
+                // Refresh list
+                fetchCertificates();
                 setSelectedCertificateType(null);
               }}
             />
           </div>
         </div>
+      )}
+
+      {/* Preview Modal */}
+      {previewCert && (
+        <CertificatePreviewModal
+          certificateData={previewCert}
+          onClose={() => setPreviewCert(null)}
+        />
       )}
 
       {/* Tab Content */}
@@ -316,9 +358,8 @@ export default function AdminDashboard() {
                       {activityLog.map((item, idx) => (
                         <tr key={idx} className="border-b">
                           <td className="px-4 py-2">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              item.type === 'Generated' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                            }`}>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.type === 'Generated' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                              }`}>
                               {item.type}
                             </span>
                           </td>
@@ -379,21 +420,19 @@ export default function AdminDashboard() {
                 <div className="flex w-full sm:w-auto justify-center sm:justify-start">
                   <div className="flex w-full max-w-xs sm:max-w-none bg-gray-100 rounded-full p-1 gap-1 sm:w-auto sm:ml-2">
                     <button
-                      className={`flex-1 px-2 py-2 sm:px-4 sm:py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-200 focus:outline-none ${
-                        !showDeleted
-                          ? 'bg-indigo-600 text-white shadow'
-                          : 'bg-transparent text-gray-700 border border-transparent'
-                      }`}
+                      className={`flex-1 px-2 py-2 sm:px-4 sm:py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-200 focus:outline-none ${!showDeleted
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'bg-transparent text-gray-700 border border-transparent'
+                        }`}
                       onClick={() => setShowDeleted(false)}
                     >
                       Show Active
                     </button>
                     <button
-                      className={`flex-1 px-2 py-2 sm:px-4 sm:py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-200 focus:outline-none ${
-                        showDeleted
-                          ? 'bg-indigo-600 text-white shadow'
-                          : 'bg-transparent text-gray-700 border border-transparent'
-                      }`}
+                      className={`flex-1 px-2 py-2 sm:px-4 sm:py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-200 focus:outline-none ${showDeleted
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'bg-transparent text-gray-700 border border-transparent'
+                        }`}
                       onClick={() => setShowDeleted(true)}
                     >
                       Show Deleted
@@ -602,27 +641,67 @@ function AdminUploadSection({ onActivity }) {
     setFileObj(null);
   };
 
-  const handleGenerate = () => {
-    // Generate IRN first
-    const newIrn = generateIRN();
-    setIrn(newIrn);
-    
-    // Generate hash using IRN as part of the data
-    const hash = `HASH-${newIrn}-${Math.random().toString(36).substr(2, 10)}`;
-    setHashLink(`https://certverify.com/verify/${hash}`);
-    setQrValue(hash);
-    setShowQR(true);
+  const handleGenerate = async () => {
+    try {
+      // Prepare data for API
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please login as admin first');
+        return;
+      }
 
-    // Log activity with IRN
-    const activity = {
-      type: 'Generated',
-      fileName: fileObj.name,
-      fileType: fileType,
-      date: new Date().toLocaleString(),
-      irn: newIrn,
-      hash: hash
-    };
-    onActivity && onActivity(activity);
+      // Generate a temporary ID for the certificate request
+      const tempId = generateIRN();
+
+      const response = await fetch('/api/cert/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          certificateId: tempId, // Optional: let backend generate or use this
+          studentName: fileObj.name.split('.')[0], // Use filename as student name for now
+          issueDate: issuedDate,
+          // Add other fields as needed
+          additionalData: {
+            fileName: fileObj.name,
+            fileType: fileType
+          }
+        })
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to generate certificate');
+      }
+
+      const certData = data.data.certificate;
+      const newIrn = certData.certificateId;
+      setIrn(newIrn);
+
+      // Use the Certificate ID as the QR value so scanner can verify it
+      const qrData = newIrn;
+      // Verification link
+      setHashLink(`${window.location.protocol}//${window.location.host}/verify/${newIrn}`);
+      setQrValue(qrData);
+      setShowQR(true);
+
+      // Log activity
+      const activity = {
+        type: 'Generated',
+        fileName: fileObj.name,
+        fileType: fileType,
+        date: new Date(certData.issueDate).toLocaleString(),
+        irn: newIrn,
+        hash: certData.hashValue
+      };
+      onActivity && onActivity(activity);
+    } catch (error) {
+      console.error('Error generating certificate:', error);
+      alert('Error generating certificate: ' + error.message);
+    }
   };
 
   const handleDownload = async () => {

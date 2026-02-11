@@ -2,6 +2,20 @@ import Certificate from '../models/Certificate.js';
 import { generateCertificateHash } from '../utils/hash.util.js';
 import { verifyCertificateHash } from '../utils/hash.util.js';
 import { generateCertificateId } from '../utils/qr.util.js';
+import QRCode from 'qrcode';
+import nunjucks from 'nunjucks';
+import puppeteer from 'puppeteer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Configure Nunjucks
+nunjucks.configure(path.join(__dirname, '../templates'), {
+  autoescape: true,
+  express: null
+});
 
 /**
  * Create New Certificate
@@ -10,12 +24,12 @@ import { generateCertificateId } from '../utils/qr.util.js';
  */
 export const createCertificate = async (req, res) => {
   try {
-    const { 
+    const {
       certificateType = 'general',
       certificateId: providedId,
-      studentName, 
-      enrollmentNo, 
-      course, 
+      studentName,
+      enrollmentNo,
+      course,
       issueDate,
       additionalData = {}
     } = req.body;
@@ -102,11 +116,28 @@ export const createCertificate = async (req, res) => {
  */
 export const verifyCertificate = async (req, res) => {
   try {
-    const { certificateId } = req.params;
+    let { certificateId } = req.params;
 
-    // Find certificate by ID
+    // Handle POST request where certificateId might be in the body
+    if (!certificateId && req.body) {
+      certificateId = req.body.certificateId || req.body.referenceNumber || req.body.qrData;
+    }
+
+    if (!certificateId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Certificate ID or QR data is required',
+      });
+    }
+
+    const searchTerm = certificateId.trim().toUpperCase();
+
+    // Find certificate by ID OR Hash
     const certificate = await Certificate.findOne({
-      certificateId: certificateId.toUpperCase(),
+      $or: [
+        { certificateId: searchTerm },
+        { hashValue: certificateId } // Hash might be case sensitive or not, usually specific string
+      ]
     });
 
     // If certificate not found
@@ -159,6 +190,7 @@ export const verifyCertificate = async (req, res) => {
         enrollmentNo: certificate.enrollmentNo,
         course: certificate.course,
         issueDate: certificate.issueDate,
+        issuingAuthority: 'P P SAVANI UNIVERSITY', // Hardcoded as per template
         additionalData: certificate.additionalData || {},
         hashVerification: {
           isValid: hashVerification.isValid,
@@ -167,6 +199,7 @@ export const verifyCertificate = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Verification Error:', error);
     res.status(500).json({
       success: false,
       message: 'Error verifying certificate',
@@ -227,3 +260,134 @@ export const listCertificates = async (req, res) => {
   }
 };
 
+
+/**
+ * Download Certificate as PDF
+ * GET /api/cert/download/:certificateId
+ * Public/Protected (depending on requirement)
+ */
+export const downloadCertificate = async (req, res) => {
+  try {
+    const { certificateId } = req.params;
+
+    const certificate = await Certificate.findOne({
+      certificateId: certificateId.toUpperCase(),
+    });
+
+    if (!certificate) {
+      return res.status(404).json({
+        success: false,
+        message: 'Certificate not found',
+      });
+    }
+
+    // Generate QR Code Data URI
+    // Make sure this points to your frontend verification URL
+    // const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify?id=${certificate.certificateId}`;
+    const qrContent = certificate.hashValue || certificate.certificateId;
+    const qrCodeDataUri = await QRCode.toDataURL(qrContent);
+
+    // Prepare data for template
+    const data = {
+      certificateId: certificate.certificateId,
+      studentName: certificate.studentName,
+      issueDate: new Date(certificate.issueDate).toLocaleDateString('en-GB'), // DD/MM/YYYY
+      qrCodeDataUri,
+      ...certificate.additionalData, // Spread specific fields (course, eventName, etc.)
+      ...certificate.toObject() // Fallback
+    };
+
+    // Select template based on type
+    let templateName;
+    switch (certificate.certificateType) {
+      case 'Hackathon':
+        templateName = 'hackathon.html';
+        data.eventName = certificate.additionalData?.eventName || 'Hackathon Event';
+        data.organizer = certificate.additionalData?.organizer || 'Organizer';
+        data.eventDate = certificate.additionalData?.eventDate ? new Date(certificate.additionalData.eventDate).toLocaleDateString('en-GB') : data.issueDate;
+        data.title = 'Certificate of Achievement';
+        data.orientation = 'landscape';
+        break;
+      case 'Sports':
+        templateName = 'sports.html';
+        data.sportName = certificate.additionalData?.sportName || 'Sports';
+        data.achievement = certificate.additionalData?.position || 'Participation';
+        data.eventLevel = certificate.additionalData?.competitionLevel || 'University Level';
+        data.eventDate = certificate.additionalData?.eventDate ? new Date(certificate.additionalData.eventDate).toLocaleDateString('en-GB') : data.issueDate;
+        data.title = 'Sports Excellence';
+        data.orientation = 'landscape';
+        break;
+      case 'Marksheet':
+        templateName = 'marksheet.html';
+        data.reportNo = certificate.certificateId;
+        data.date = data.issueDate;
+        data.enrollmentNo = certificate.enrollmentNo;
+        data.semester = certificate.additionalData?.semester || 'N/A';
+        data.academicYear = certificate.additionalData?.academicYear || '2023-2024';
+        data.institution = 'P P SAVANI SCHOOL OF ENGINEERING'; // Example
+        data.course = certificate.course;
+        data.subjects = certificate.additionalData?.subjects || [];
+        // Ensure performance structure exists
+        const perf = certificate.additionalData?.performance || {};
+        data.performance = {
+          currentSemester: {
+            registeredCredits: perf.currentSemester?.registeredCredits || 0,
+            earnedCredits: perf.currentSemester?.earnedCredits || 0,
+            sgpa: perf.currentSemester?.sgpa || 0
+          },
+          cumulative: {
+            earnedCredits: perf.cumulative?.earnedCredits || 0,
+            cgpa: perf.cumulative?.cgpa || 0,
+            backlogs: perf.cumulative?.backlogs || 0
+          }
+        };
+        data.printedOn = new Date().toLocaleString('en-GB');
+        data.title = 'Official Marksheet';
+        data.orientation = 'portrait';
+        break;
+      default:
+        return res.status(400).json({
+          success: false,
+          message: 'Unknown certificate type',
+        });
+    }
+
+    // Render HTML
+    const htmlContent = nunjucks.render(templateName, data);
+
+    // Generate PDF with Puppeteer
+    const browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    const page = await browser.newPage();
+
+    // Set content and wait for network idle
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      landscape: data.orientation === 'landscape'
+    });
+
+    await browser.close();
+
+    // Send PDF
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Length': pdfBuffer.length,
+      'Content-Disposition': `attachment; filename="${certificate.certificateId}.pdf"`,
+    });
+
+    res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error('PDF Generation Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating PDF',
+      error: error.message
+    });
+  }
+};

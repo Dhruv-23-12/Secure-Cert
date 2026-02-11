@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import HackathonCertificate from '../pages/HackathonCertificate';
 import SportsCertificate from '../pages/SportsCertificate';
 import Marksheet from '../pages/Marksheet';
+import CertificatePreviewModal from './CertificatePreviewModal';
 
 const API_BASE_URL =
   (typeof import.meta !== 'undefined' &&
@@ -17,7 +18,7 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
   const [success, setSuccess] = useState('');
   const [certificateId, setCertificateId] = useState('');
   const [qrValue, setQrValue] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
 
   // Form state based on certificate type
   const [formData, setFormData] = useState(() => {
@@ -64,7 +65,7 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
     try {
       // Generate certificate ID
       const newCertId = `${certificateType.toUpperCase().substring(0, 4)}-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-      
+
       // Format date properly
       let issueDate = formData.eventDate || new Date().toISOString();
       if (formData.eventDate && !formData.eventDate.includes('T')) {
@@ -108,7 +109,7 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
       setCertificateId(data.data.certificate.certificateId || newCertId);
       setQrValue(data.data.certificate.hashValue || data.data.certificate.certificateId || newCertId);
       setSuccess('Certificate created successfully!');
-      
+
       if (onSuccess) {
         onSuccess({
           ...certificateData,
@@ -345,49 +346,21 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
     return null;
   };
 
-  const renderPreview = () => {
-    if (!certificateId) return null;
-
-    if (certificateType === 'hackathon') {
-      return (
-        <HackathonCertificate
-          studentName={formData.studentName}
-          eventName={formData.eventName}
-          eventDate={formData.eventDate}
-          organizer={formData.organizer}
-          certificateId={certificateId}
-          qrValue={qrValue}
-        />
-      );
-    } else if (certificateType === 'sports') {
-      return (
-        <SportsCertificate
-          studentName={formData.studentName}
-          sportName={formData.sportName}
-          achievement={formData.achievement}
-          eventLevel={formData.eventLevel}
-          eventDate={formData.eventDate}
-          certificateId={certificateId}
-          qrValue={qrValue}
-        />
-      );
-    } else if (certificateType === 'marksheet') {
-      return (
-        <Marksheet
-          studentData={{
-            studentName: formData.studentName,
-            enrollmentNo: formData.enrollmentNo,
-            course: formData.course,
-            semester: formData.semester,
-            academicYear: formData.academicYear,
-            institution: formData.institution,
-            reportNo: certificateId,
-            date: new Date().toLocaleDateString(),
-          }}
-        />
-      );
+  const handlePreview = () => {
+    // Validate basic fields before preview
+    if (!formData.studentName) {
+      setError('Please enter at least a student name to preview.');
+      return;
     }
-    return null;
+
+    setPreviewData({
+      certificateType,
+      certificateId: 'PREVIEW',
+      hashValue: 'PREVIEW_HASH',
+      studentName: formData.studentName,
+      issueDate: formData.eventDate || new Date().toISOString(),
+      additionalData: formData
+    });
   };
 
   return (
@@ -416,19 +389,16 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
         <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded">
           <div className="flex items-center justify-between">
             <span>{success}</span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowPreview(!showPreview)}
-                className="text-green-800 underline hover:text-green-900 text-sm"
-              >
-                {showPreview ? 'Hide Preview' : 'Show Preview'}
-              </button>
-            </div>
           </div>
         </div>
       )}
 
-      {showPreview && renderPreview()}
+      {previewData && (
+        <CertificatePreviewModal
+          certificateData={previewData}
+          onClose={() => setPreviewData(null)}
+        />
+      )}
 
       {!showPreview && (
         <>
@@ -441,6 +411,13 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
               className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
             >
               {loading ? 'Creating...' : 'Generate Certificate'}
+            </button>
+            <button
+              type="button"
+              onClick={handlePreview}
+              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              Preview
             </button>
             <button
               type="button"

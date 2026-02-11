@@ -1,11 +1,12 @@
 import React, { useRef } from 'react';
 import html2canvas from 'html2canvas';
 import { PDFDocument, rgb } from 'pdf-lib';
+import QRCode from 'react-qr-code';
 
-export default function Marksheet({ 
+export default function Marksheet({
   studentData: propStudentData,
   subjects: propSubjects,
-  performance: propPerformance 
+  performance: propPerformance
 }) {
   // Print-specific styles
   React.useEffect(() => {
@@ -95,11 +96,11 @@ export default function Marksheet({
 
       // Create a new PDF document
       const pdfDoc = await PDFDocument.create();
-      
+
       // Calculate dimensions (A4 portrait: 210mm x 297mm)
       const pdfWidth = 595.28; // A4 width in points (210mm)
       const pdfHeight = 841.89; // A4 height in points (297mm)
-      
+
       // Calculate image dimensions to fit A4
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
@@ -112,7 +113,7 @@ export default function Marksheet({
 
       // Embed the image
       const pngImage = await pdfDoc.embedPng(imgData);
-      
+
       // Center the image on the page
       const x = (pdfWidth - scaledWidth) / 2;
       const y = pdfHeight - scaledHeight;
@@ -126,7 +127,7 @@ export default function Marksheet({
 
       // Save the PDF
       const pdfBytes = await pdfDoc.save();
-      
+
       // Download the PDF
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
@@ -157,9 +158,9 @@ export default function Marksheet({
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4">
-      <div 
+      <div
         ref={marksheetRef}
-        className="marksheet-container max-w-4xl mx-auto bg-white shadow-lg" 
+        className="marksheet-container max-w-4xl mx-auto bg-white shadow-lg"
         style={{ width: '210mm', minHeight: '297mm', padding: '20mm' }}
       >
         {/* Header Section */}
@@ -356,10 +357,17 @@ export default function Marksheet({
         {/* Footer Section */}
         <div className="mt-8 border-t-2 border-gray-800 pt-4">
           <div className="flex justify-between items-end">
-            {/* QR Code Placeholder */}
+            {/* QR Code */}
             <div className="flex flex-col items-center">
-              <div className="w-24 h-24 border-2 border-gray-400 flex items-center justify-center bg-gray-50 mb-2">
-                <span className="text-xs text-gray-400">QR CODE</span>
+              <div className="border-2 border-gray-400 p-1 bg-white mb-2">
+                <QRCode
+                  value={
+                    // Priority: Explicit QR Value > Hash Value > Report No > Fallback
+                    (studentData.qrValue || studentData.hashValue || studentData.reportNo || 'https://ppsu.ac.in')
+                  }
+                  size={96}
+                  level="M"
+                />
               </div>
             </div>
 
