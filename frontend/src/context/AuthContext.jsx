@@ -46,9 +46,22 @@ export const AuthProvider = ({ children }) => {
 
       const data = await response.json().catch(() => null);
 
-      if (!response.ok || !data?.success || !data?.data?.user) {
-        console.error('Login failed:', data?.message || response.statusText);
-        return false;
+      if (!response.ok) {
+        return { success: false, message: data?.message || 'Login failed' };
+      }
+
+      // Check for 2FA requirement
+      if (data.require2FA) {
+        return {
+          success: true,
+          require2FA: true,
+          userId: data.userId,
+          email: data.email
+        };
+      }
+
+      if (!data.success || !data.data?.user) {
+        return { success: false, message: data?.message || 'Login failed' };
       }
 
       const userData = {
@@ -64,10 +77,38 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('token', data.data.token);
       }
 
-      return true;
+      return { success: true, require2FA: false };
     } catch (error) {
       console.error('Login error:', error);
-      return false;
+      return { success: false, message: 'Network error or server down' };
+    }
+  };
+
+  const verifyOTP = async (userId, code) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/verify-2fa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, code })
+      });
+      const data = await response.json();
+
+      if (data.success && data.data.token) {
+        const userData = {
+          id: data.data.user.id,
+          email: data.data.user.email,
+          role: data.data.user.role,
+          token: data.data.token,
+        };
+        setUser(userData);
+        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem('token', data.data.token);
+        return { success: true };
+      } else {
+        return { success: false, message: data.message || 'Verification failed' };
+      }
+    } catch (error) {
+      return { success: false, message: 'Error verifying OTP' };
     }
   };
 
@@ -81,6 +122,7 @@ export const AuthProvider = ({ children }) => {
     user,
     loading,
     login,
+    verifyOTP,
     logout,
   };
 

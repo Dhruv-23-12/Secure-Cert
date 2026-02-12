@@ -307,6 +307,8 @@ export const downloadCertificate = async (req, res) => {
         data.eventDate = certificate.additionalData?.eventDate ? new Date(certificate.additionalData.eventDate).toLocaleDateString('en-GB') : data.issueDate;
         data.title = 'Certificate of Achievement';
         data.orientation = 'landscape';
+        data.width = '297mm';
+        data.height = '210mm';
         break;
       case 'Sports':
         templateName = 'sports.html';
@@ -316,6 +318,8 @@ export const downloadCertificate = async (req, res) => {
         data.eventDate = certificate.additionalData?.eventDate ? new Date(certificate.additionalData.eventDate).toLocaleDateString('en-GB') : data.issueDate;
         data.title = 'Sports Excellence';
         data.orientation = 'landscape';
+        data.width = '297mm';
+        data.height = '210mm';
         break;
       case 'Marksheet':
         templateName = 'marksheet.html';
@@ -344,6 +348,8 @@ export const downloadCertificate = async (req, res) => {
         data.printedOn = new Date().toLocaleString('en-GB');
         data.title = 'Official Marksheet';
         data.orientation = 'portrait';
+        data.width = '210mm';
+        data.height = '297mm';
         break;
       default:
         return res.status(400).json({

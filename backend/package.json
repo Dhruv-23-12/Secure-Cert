@@ -24,6 +24,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
     "multer": "^2.0.2",
+    "nodemailer": "^8.0.1",
     "nunjucks": "^3.2.4",
     "puppeteer": "^24.37.2",
     "qrcode": "^1.5.4"
