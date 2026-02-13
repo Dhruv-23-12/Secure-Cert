@@ -400,7 +400,7 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
         />
       )}
 
-      {!showPreview && (
+      {!previewData && (
         <>
           {renderForm()}
           <div className="mt-6 flex space-x-4">

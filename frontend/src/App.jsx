@@ -25,7 +25,7 @@ import { useLocation } from 'react-router-dom';
 // Protected Route component
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  
+
   // Show loading state while checking authentication
   if (loading) {
     return (
@@ -62,14 +62,17 @@ function ScrollToTopOnRouteChange() {
   return null;
 }
 
-function App() {
+// Inner component to usage of useLocation hook
+function AppContent() {
+  const location = useLocation();
+
   return (
-    <AuthProvider>
-      <Router>
-        <ScrollToTopOnRouteChange />
-        <div className="min-h-screen flex flex-col">
-          <Navbar />
-          <main className="flex-grow">
+    <>
+      <ScrollToTopOnRouteChange />
+      <div className="min-h-screen flex flex-col">
+        <Navbar />
+        <main className="flex-grow relative">
+          <div key={location.pathname} className="animate-fade-in">
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/login" element={<Login />} />
@@ -77,13 +80,13 @@ function App() {
               <Route path="/SecureCert-admin" element={<AdminLogin />} />
               <Route path="/signup" element={<Signup />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route 
-                path="/verify/:certificateId" 
+              <Route
+                path="/verify/:certificateId"
                 element={
                   <ProtectedRoute>
                     <VerifyCertificate />
                   </ProtectedRoute>
-                } 
+                }
               />
               <Route path="/demo" element={<Demo />} />
               <Route path="/about" element={<AboutUs />} />
@@ -104,9 +107,19 @@ function App() {
                 }
               />
             </Routes>
-          </main>
-          <Footer />
-        </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <AppContent />
       </Router>
     </AuthProvider>
   );

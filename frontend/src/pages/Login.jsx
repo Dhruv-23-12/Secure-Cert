@@ -7,7 +7,7 @@ import otpAnimation from '../assets/animations/otp.json';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, verifyOTP } = useAuth();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -64,7 +64,7 @@ export default function Login() {
       // In a real app, you would send this code via email/SMS
       console.log('New 2FA Code for admin:', code);
       setTempUserData(prev => ({ ...prev, code }));
-      setTwoFATimer(30);
+      setTwoFATimer(600); // 10 minutes
       setResendTimer(60);
       setCanResend(false);
       setError('');
@@ -125,7 +125,7 @@ export default function Login() {
           // Backend requested 2FA
           setTempUserData({ userId: result.userId, email: result.email }); // Store userId for verification
           setShow2FA(true);
-          setTwoFATimer(30);
+          setTwoFATimer(600); // 10 minutes Matches backend
           setResendTimer(60);
           setCanResend(false);
         } else {
@@ -154,32 +154,30 @@ export default function Login() {
       return;
     }
 
-    if (attempts >= 3) {
-      setError('Too many attempts. Please try logging in again.');
-      setShow2FA(false);
-      setTempUserData(null);
-      return;
-    }
+    setLoading(true);
+    try {
+      const result = await verifyOTP(tempUserData.userId, code);
 
-    if (code === tempUserData.code) {
-      // 2FA successful, now call login and set user
-      const success = await login(tempUserData.email, tempUserData.password);
-      if (success) {
+      if (result.success) {
         const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
         if (redirectUrl) {
           sessionStorage.removeItem('redirectAfterLogin');
           navigate(redirectUrl);
         } else {
-          navigate('/admin');
+          // Check role to redirect appropriately
+          const user = JSON.parse(localStorage.getItem('user'));
+          navigate(user?.role === 'admin' ? '/admin' : '/');
         }
       } else {
-        setError('Invalid email or password');
+        setAttempts(prev => prev + 1);
+        setError(result.message || 'Invalid code');
+        setTwoFACode(['', '', '', '', '', '']);
+        inputRefs.current[0]?.focus();
       }
-    } else {
-      setAttempts(prev => prev + 1);
-      setError(`Invalid code. ${3 - attempts} attempts remaining.`);
-      setTwoFACode(['', '', '', '', '', '']);
-      inputRefs.current[0]?.focus();
+    } catch (err) {
+      setError('An error occurred during verification');
+    } finally {
+      setLoading(false);
     }
   };
 

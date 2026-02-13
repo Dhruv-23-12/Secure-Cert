@@ -13,11 +13,11 @@ import crypto from 'crypto';
 export const generateCertificateHash = (studentName, enrollmentNo, course, certificateId) => {
   // Concatenate all fields in the specified order
   const dataString = `${studentName}${enrollmentNo}${course}${certificateId}`;
-  
+
   // Generate SHA-256 hash
   const hash = crypto.createHash('sha256');
   hash.update(dataString);
-  
+
   // Return hash as hexadecimal string
   return hash.digest('hex');
 };
@@ -31,10 +31,11 @@ export const generateCertificateHash = (studentName, enrollmentNo, course, certi
  */
 export const verifyCertificateHash = (certificate) => {
   // Re-generate hash from stored certificate data
+  // Must match the logic in createCertificate controller
   const regeneratedHash = generateCertificateHash(
     certificate.studentName,
-    certificate.enrollmentNo,
-    certificate.course,
+    certificate.enrollmentNo || certificate.certificateId,
+    certificate.course || certificate.certificateType,
     certificate.certificateId
   );
 
@@ -45,8 +46,8 @@ export const verifyCertificateHash = (certificate) => {
     isValid,
     regeneratedHash,
     storedHash: certificate.hashValue,
-    message: isValid 
-      ? 'Certificate is valid and authentic' 
+    message: isValid
+      ? 'Certificate is valid and authentic'
       : 'Certificate has been tampered with',
   };
 };

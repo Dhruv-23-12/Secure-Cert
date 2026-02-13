@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import UserActivity from '../components/UserActivity';
 import jsQR from 'jsqr';
@@ -14,6 +14,7 @@ const scanningStyles = `
 
 export default function VerifyCertificate() {
   const navigate = useNavigate();
+  const { certificateId } = useParams();
   const { user } = useAuth();
   const [tab, setTab] = useState('reference');
   const [reference, setReference] = useState('');
@@ -51,6 +52,31 @@ export default function VerifyCertificate() {
   useEffect(() => {
     localStorage.setItem('userActivities', JSON.stringify(userActivities));
   }, [userActivities]);
+
+  useEffect(() => {
+    if (certificateId) {
+      if (certificateId === 'demo-certificate') {
+        // Simulate a successful verification for the demo
+        setLoading(true);
+        setTimeout(() => {
+          setVerificationResult({
+            isValid: true,
+            message: 'Certificate is valid and authentic. (DEMO)',
+            details: {
+              certificateId: 'DEMO-CERT-2026',
+              recipientName: 'John Doe',
+              certificateType: 'Hackathon Participation',
+              issueDate: new Date().toISOString(),
+              issuingAuthority: 'SecureCert Demo Authority'
+            }
+          });
+          setLoading(false);
+        }, 800);
+      } else {
+        setReference(certificateId);
+      }
+    }
+  }, [certificateId]);
 
   // Check authentication on component mount
   useEffect(() => {
@@ -326,7 +352,7 @@ export default function VerifyCertificate() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center py-8 px-2">
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center py-8 px-4 sm:px-6 lg:px-8">
       <h1 className="text-2xl sm:text-3xl font-bold text-center mb-2">
         Certificate Verification
       </h1>
@@ -376,7 +402,7 @@ export default function VerifyCertificate() {
             ) : (
               <>
                 {/* QR Code Mode Toggle */}
-                <div className="flex gap-3 mb-4">
+                <div className="flex flex-col sm:flex-row gap-3 mb-4">
                   <button
                     type="button"
                     className={`flex-1 flex items-center justify-center gap-2 border rounded-md py-2 px-4 font-semibold transition ${qrMode === 'upload'

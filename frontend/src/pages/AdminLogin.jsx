@@ -69,27 +69,16 @@ export default function AdminLogin() {
     }
   }, [attempts]);
 
-  // Generate a fixed 2FA code for testing
-  const generate2FACode = () => {
-    return "123456";
-  };
+
 
   const handleResendCode = async () => {
-    if (!canResend || !tempUserData) return;
-    setLoading(true);
-    try {
-      const code = generate2FACode();
-      setTempUserData(prev => ({ ...prev, code }));
-      setTwoFATimer(30);
-      setResendTimer(60);
-      setCanResend(false);
-      setError('');
-      setTwoFACode(['', '', '', '', '', '']);
-    } catch (err) {
-      setError('Failed to resend code. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    // In a real app, this would call a backend endpoint to resend the email
+    // For now, we simulate the timer reset (backend logic sends email on login)
+    // To properly resend, we'd need an endpoint like /api/auth/resend-2fa
+    setTwoFATimer(30);
+    setResendTimer(60);
+    setCanResend(false);
+    setError('Code resend simulation: Check console/email if implemented.');
   };
 
   const handleCodeChange = (index, value) => {
@@ -130,51 +119,72 @@ export default function AdminLogin() {
     }
 
     try {
-      const code = generate2FACode();
-      alert(`Your 2FA code is: ${code}`);
-      setTempUserData({ email, password, code });
-      setShow2FA(true);
-      setTwoFATimer(30);
-      setResendTimer(60);
-      setCanResend(false);
+      // Call backend login
+      const result = await login(email, password);
+
+      if (result.success) {
+        if (result.require2FA) {
+          // Backend requires 2FA
+          setTempUserData({ userId: result.userId, email: result.email });
+          setShow2FA(true);
+          setTwoFATimer(600); // 10 minutes matches backend
+          setResendTimer(60);
+          setCanResend(false);
+        } else {
+          // Direct login (if 2FA disabled)
+          const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
+          if (storedUser?.role === 'admin') {
+            navigate('/admin', { replace: true });
+          } else {
+            setError('Access denied: Admin privileges required.');
+          }
+        }
+      } else {
+        setAttempts(prev => prev + 1);
+        setError(result.message || 'Invalid email or password');
+      }
+    } catch (err) {
+      setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  const { verifyOTP } = useAuth();
+
   const handle2FASubmit = async (e) => {
     e.preventDefault();
-    if (!tempUserData) return;
+    if (!tempUserData?.userId) return;
+
     const code = twoFACode.join('');
     if (code.length !== 6) {
       setError('Please enter all 6 digits');
       return;
     }
-    if (code === tempUserData.code) {
-      setLoading(true);
-      try {
-        const success = await login(tempUserData.email, tempUserData.password);
-        if (!success) {
-          setAttempts(prev => prev + 1);
-          setError('Invalid email or password');
-          return;
-        }
 
+    setLoading(true);
+    try {
+      const result = await verifyOTP(tempUserData.userId, code);
+
+      if (result.success) {
+        // Verification successful, user and token are set in context/localstorage
+        // Check role
         const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
-        if (storedUser?.role !== 'admin') {
-          setError('You do not have admin access.');
-          return;
+        if (storedUser?.role === 'admin') {
+          navigate('/admin', { replace: true });
+        } else {
+          setError('Access denied: Admin privileges required.');
+          // Optionally logout here to clear the non-admin session
         }
-
-        navigate('/admin', { replace: true });
-      } finally {
-        setLoading(false);
+      } else {
+        setError(result.message || 'Invalid code. Please try again.');
+        setTwoFACode(['', '', '', '', '', '']);
+        inputRefs.current[0]?.focus();
       }
-    } else {
-      setAttempts(prev => prev + 1);
-      setError(`Invalid code. ${5 - attempts} attempts remaining.`);
-      setTwoFACode(['', '', '', '', '', '']);
-      inputRefs.current[0]?.focus();
+    } catch (err) {
+      setError('Verification failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -195,7 +205,7 @@ export default function AdminLogin() {
             {show2FA ? 'Two-Factor Authentication' : 'Admin Login'}
           </h2>
           <p className="text-sm text-gray-600">
-            {show2FA 
+            {show2FA
               ? `Enter the 6-digit code sent to your email. Code expires in ${twoFATimer} seconds.`
               : 'Sign in to access your admin dashboard'}
           </p>

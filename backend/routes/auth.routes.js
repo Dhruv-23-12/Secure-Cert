@@ -16,5 +16,9 @@ router.post('/register', register);
 // POST /api/auth/login
 router.post('/login', login);
 
+// Verify 2FA
+// POST /api/auth/verify-2fa
+router.post('/verify-2fa', verify2FA);
+
 export default router;
 

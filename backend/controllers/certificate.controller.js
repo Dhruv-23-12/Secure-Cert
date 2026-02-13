@@ -27,12 +27,16 @@ export const createCertificate = async (req, res) => {
     const {
       certificateType = 'general',
       certificateId: providedId,
-      studentName,
-      enrollmentNo,
-      course,
       issueDate,
       additionalData = {}
     } = req.body;
+
+    let { studentName, enrollmentNo, course } = req.body;
+
+    // Trim inputs to ensure consistency with database storage
+    if (studentName) studentName = studentName.trim();
+    if (enrollmentNo) enrollmentNo = enrollmentNo.trim();
+    if (course) course = course.trim();
 
     // Validate required fields
     if (!studentName || !issueDate) {
