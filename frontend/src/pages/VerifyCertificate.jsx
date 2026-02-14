@@ -310,6 +310,7 @@ export default function VerifyCertificate() {
           certificateType: data.certificateType || data.type || '-',
           issueDate: data.issueDate || data.issuedAt || '-',
           issuingAuthority: data.issuingAuthority || data.issuer || '-',
+          additionalData: data.additionalData || {},
         }
         : null;
 
@@ -828,6 +829,54 @@ export default function VerifyCertificate() {
                         {verificationResult.details.issuingAuthority}
                       </dd>
                     </div>
+
+                    {/* Dynamic Fields based on Certificate Type */}
+                    {verificationResult.details.certificateType.toLowerCase() === 'hackathon' && (
+                      <>
+                        <div>
+                          <dt className="font-medium text-gray-600">Event Name</dt>
+                          <dd className="text-gray-900">{verificationResult.details.additionalData?.eventName || '-'}</dd>
+                        </div>
+                        <div>
+                          <dt className="font-medium text-gray-600">Organizer</dt>
+                          <dd className="text-gray-900">{verificationResult.details.additionalData?.organizer || '-'}</dd>
+                        </div>
+                      </>
+                    )}
+
+                    {verificationResult.details.certificateType.toLowerCase() === 'sports' && (
+                      <>
+                        <div>
+                          <dt className="font-medium text-gray-600">Sport</dt>
+                          <dd className="text-gray-900">{verificationResult.details.additionalData?.sportName || '-'}</dd>
+                        </div>
+                        <div>
+                          <dt className="font-medium text-gray-600">Achievement</dt>
+                          <dd className="text-gray-900">{verificationResult.details.additionalData?.achievement || '-'}</dd>
+                        </div>
+                        <div>
+                          <dt className="font-medium text-gray-600">Event Level</dt>
+                          <dd className="text-gray-900">{verificationResult.details.additionalData?.eventLevel || '-'}</dd>
+                        </div>
+                      </>
+                    )}
+
+                    {verificationResult.details.certificateType.toLowerCase() === 'marksheet' && (
+                      <>
+                        <div>
+                          <dt className="font-medium text-gray-600">Course</dt>
+                          <dd className="text-gray-900">{verificationResult.details.course || verificationResult.details.additionalData?.course || '-'}</dd>
+                        </div>
+                        <div>
+                          <dt className="font-medium text-gray-600">Enrollment No</dt>
+                          <dd className="text-gray-900">{verificationResult.details.enrollmentNo || verificationResult.details.additionalData?.enrollmentNo || '-'}</dd>
+                        </div>
+                        <div>
+                          <dt className="font-medium text-gray-600">Semester</dt>
+                          <dd className="text-gray-900">{verificationResult.details.additionalData?.semester || '-'}</dd>
+                        </div>
+                      </>
+                    )}
                   </dl>
                 )}
               </div>

@@ -83,6 +83,7 @@ export default function AdminDashboard() {
         }
       });
       const data = await response.json();
+      console.log('AdminDashboard fetched certificates:', data);
       if (data.success) {
         // Transform API data to match activity log format
         const certs = data.data.certificates.map(cert => ({
@@ -105,7 +106,12 @@ export default function AdminDashboard() {
   };
 
   React.useEffect(() => {
+    console.log('AdminDashboard activityLog updated:', activityLog);
+  }, [activityLog]);
+
+  React.useEffect(() => {
     fetchCertificates();
+    setSearchQuery(''); // Clear search when tab changes
   }, [activeTab]); // Refresh when tab changes
 
   const handleAddActivity = (activity) => {
@@ -338,7 +344,18 @@ export default function AdminDashboard() {
             </div>
             {/* All Activity Section */}
             <div className="bg-white rounded-lg shadow p-4 sm:p-8 space-y-4 mt-8">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">All Activity</h2>
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  All Activity ({activityLog.length})
+                </h2>
+                <button
+                  onClick={fetchCertificates}
+                  className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                >
+                  Refresh List
+                </button>
+              </div>
+
               {activityLog.length === 0 ? (
                 <div className="text-gray-500">No activity yet.</div>
               ) : (
@@ -356,7 +373,7 @@ export default function AdminDashboard() {
                     </thead>
                     <tbody>
                       {activityLog.map((item, idx) => (
-                        <tr key={idx} className="border-b">
+                        <tr key={item.irn || idx} className="border-b">
                           <td className="px-4 py-2">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.type === 'Generated' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
                               }`}>

@@ -7,6 +7,7 @@ import {
 } from '../controllers/certificate.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeAdmin } from '../middleware/auth.middleware.js';
+import upload from '../middleware/upload.middleware.js';
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ router.post('/create', authenticate, authorizeAdmin, createCertificate);
 
 // Verify certificate (Public access)
 // POST /api/cert/verify
-import upload from '../middleware/upload.middleware.js';
+
 
 router.post('/verify', upload.single('file'), verifyCertificate);
 

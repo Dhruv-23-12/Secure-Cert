@@ -31,6 +31,8 @@ export const createCertificate = async (req, res) => {
       additionalData = {}
     } = req.body;
 
+    console.log('📝 Creating Certificate:', { certificateType, studentName: req.body.studentName, additionalData });
+
     let { studentName, enrollmentNo, course } = req.body;
 
     // Trim inputs to ensure consistency with database storage
@@ -101,6 +103,7 @@ export const createCertificate = async (req, res) => {
           issueDate: certificate.issueDate,
           status: certificate.status,
           hashValue: certificate.hashValue,
+          additionalData: certificate.additionalData,
         },
       },
     });
@@ -239,6 +242,11 @@ export const listCertificates = async (req, res) => {
       .skip(skip)
       .limit(limit);
 
+    console.log(`📋 Listing Certificates: Found ${certificates.length} items. Query:`, query);
+    if (certificates.length > 0) {
+      console.log('🔍 First item additionalData:', JSON.stringify(certificates[0].additionalData, null, 2));
+    }
+
     // Get total count for pagination info
     const total = await Certificate.countDocuments(query);
 
@@ -273,17 +281,21 @@ export const listCertificates = async (req, res) => {
 export const downloadCertificate = async (req, res) => {
   try {
     const { certificateId } = req.params;
+    console.log(`📥 Downloading Certificate: ${certificateId}`);
 
     const certificate = await Certificate.findOne({
       certificateId: certificateId.toUpperCase(),
     });
 
     if (!certificate) {
+      console.warn(`⚠️ Certificate not found: ${certificateId}`);
       return res.status(404).json({
         success: false,
         message: 'Certificate not found',
       });
     }
+
+    console.log(`✅ Certificate found: ${certificate.certificateType}`);
 
     // Generate QR Code Data URI
     // Make sure this points to your frontend verification URL
@@ -301,10 +313,17 @@ export const downloadCertificate = async (req, res) => {
       ...certificate.toObject() // Fallback
     };
 
+    console.log('📝 Template Data Prepared:', {
+      type: certificate.certificateType,
+      id: data.certificateId,
+      additionalDataKeys: Object.keys(certificate.additionalData || {})
+    });
+
     // Select template based on type
     let templateName;
-    switch (certificate.certificateType) {
-      case 'Hackathon':
+    const typeLower = certificate.certificateType.toLowerCase();
+    switch (typeLower) {
+      case 'hackathon':
         templateName = 'hackathon.html';
         data.eventName = certificate.additionalData?.eventName || 'Hackathon Event';
         data.organizer = certificate.additionalData?.organizer || 'Organizer';
@@ -314,7 +333,7 @@ export const downloadCertificate = async (req, res) => {
         data.width = '297mm';
         data.height = '210mm';
         break;
-      case 'Sports':
+      case 'sports':
         templateName = 'sports.html';
         data.sportName = certificate.additionalData?.sportName || 'Sports';
         data.achievement = certificate.additionalData?.position || 'Participation';
@@ -325,7 +344,7 @@ export const downloadCertificate = async (req, res) => {
         data.width = '297mm';
         data.height = '210mm';
         break;
-      case 'Marksheet':
+      case 'marksheet':
         templateName = 'marksheet.html';
         data.reportNo = certificate.certificateId;
         data.date = data.issueDate;
@@ -356,16 +375,21 @@ export const downloadCertificate = async (req, res) => {
         data.height = '297mm';
         break;
       default:
+        console.warn(`⚠️ Unknown certificate type: ${typeLower}`);
         return res.status(400).json({
           success: false,
           message: 'Unknown certificate type',
         });
     }
 
+    console.log(`📄 Using template: ${templateName}`);
+
     // Render HTML
     const htmlContent = nunjucks.render(templateName, data);
+    console.log(`✅ HTML Rendered. Length: ${htmlContent.length} chars`);
 
     // Generate PDF with Puppeteer
+    console.log('🚀 Launching Puppeteer...');
     const browser = await puppeteer.launch({
       headless: 'new',
       args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -374,26 +398,32 @@ export const downloadCertificate = async (req, res) => {
 
     // Set content and wait for network idle
     await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    console.log('✅ Page content set');
 
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
       landscape: data.orientation === 'landscape'
     });
+    console.log(`✅ PDF Generated. Buffer size: ${pdfBuffer.length} bytes`);
 
     await browser.close();
+    console.log('🔒 Browser closed');
 
     // Send PDF
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Length': pdfBuffer.length,
       'Content-Disposition': `attachment; filename="${certificate.certificateId}.pdf"`,
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
     });
 
-    res.send(pdfBuffer);
+    console.log('📤 Sending PDF response...');
+    res.end(pdfBuffer);
 
   } catch (error) {
-    console.error('PDF Generation Error:', error);
+    console.error('❌ PDF Generation Error:', error);
     res.status(500).json({
       success: false,
       message: 'Error generating PDF',

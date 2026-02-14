@@ -40,7 +40,20 @@ export const verifyCertificateHash = (certificate) => {
   );
 
   // Compare regenerated hash with stored hash
+  // Compare regenerated hash with stored hash
   const isValid = regeneratedHash === certificate.hashValue;
+
+  if (!isValid) {
+    console.log('❌ Hash Mismatch Debug:');
+    console.log('Student:', certificate.studentName);
+    console.log('ID:', certificate.certificateId);
+    console.log('Course (DB):', certificate.course);
+    console.log('Enrollment (DB):', certificate.enrollmentNo);
+    console.log('Type (DB):', certificate.certificateType);
+    console.log('Regenerated Hash:', regeneratedHash);
+    console.log('Stored Hash:     ', certificate.hashValue);
+    console.log('Inputs used: ', `Student: ${certificate.studentName}, Enrol: ${certificate.enrollmentNo || certificate.certificateId}, Course: ${certificate.course || certificate.certificateType}, ID: ${certificate.certificateId}`);
+  }
 
   return {
     isValid,
