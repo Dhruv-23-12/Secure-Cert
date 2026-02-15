@@ -73,20 +73,7 @@ export default function ContactUs() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
-                <div className="ml-3">
-                  <h3 className="text-lg font-medium text-gray-900">Address (Surat)</h3>
-                  <p className="mt-1 text-gray-600">
-                    406, Manthan Apartment,<br />
-                    Above Central Bank of India,<br />
-                    Gujarat Gas Circle, Adajan,<br />
-                    Surat-395009
-                  </p>
-                  <h3 className="text-lg font-medium text-gray-900 mt-6">Address (Toronto)</h3>
-                  <p className="mt-1 text-gray-600">
-                    1, Dundas Street West Suites 2500,<br />
-                    Toronto, ON, M5G 1Z3
-                  </p>
-                </div>
+               
               </div>
             </div>
 
@@ -184,40 +171,6 @@ export default function ContactUs() {
                 Send Message
               </button>
             </form>
-          </div>
-        </div>
-
-        {/* Map Container */}
-        <div className="mt-12">
-          <div className="bg-white rounded-xl shadow p-6 border border-gray-100 mb-8">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Our Location (Surat)</h2>
-            <div className="w-full rounded-lg overflow-hidden border border-gray-200">
-              <iframe
-                title="Surat Office Map"
-                width="100%"
-                height="350"
-                style={{ border: 0, borderRadius: '0.75rem' }}
-                loading="lazy"
-                allowFullScreen
-                referrerPolicy="no-referrer-when-downgrade"
-                src="https://www.google.com/maps?q=406+Manthan+Apartment,+Above+Central+Bank+of+India,+Gujarat+Gas+Circle,+Adajan,+Surat-395009&output=embed"
-              />
-            </div>
-          </div>
-          <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Our Location (Toronto)</h2>
-            <div className="w-full rounded-lg overflow-hidden border border-gray-200">
-              <iframe
-                title="Toronto Office Map"
-                width="100%"
-                height="350"
-                style={{ border: 0, borderRadius: '0.75rem' }}
-                loading="lazy"
-                allowFullScreen
-                referrerPolicy="no-referrer-when-downgrade"
-                src="https://www.google.com/maps?q=1+Dundas+Street+West+Suites+2500,+Toronto,+ON,+M5G+1Z3&output=embed"
-              />
-            </div>
           </div>
         </div>
       </div>
