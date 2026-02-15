@@ -1,13 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { apiUrl } from '../config/api';
 
 const AuthContext = createContext(null);
-
-// API base URL (Vite env or fallback to localhost backend)
-const API_BASE_URL =
-  (typeof import.meta !== 'undefined' &&
-    import.meta.env &&
-    import.meta.env.VITE_API_URL) ||
-  'http://localhost:5000/api';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -36,7 +30,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,7 +80,7 @@ export const AuthProvider = ({ children }) => {
 
   const verifyOTP = async (userId, code) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/verify-2fa`, {
+      const response = await fetch(apiUrl('/api/auth/verify-2fa'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, code })

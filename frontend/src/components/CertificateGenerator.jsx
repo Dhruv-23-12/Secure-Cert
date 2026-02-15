@@ -1,15 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { apiUrl } from '../config/api';
 import HackathonCertificate from '../pages/HackathonCertificate';
 import SportsCertificate from '../pages/SportsCertificate';
 import Marksheet from '../pages/Marksheet';
 import CertificatePreviewModal from './CertificatePreviewModal';
-
-const API_BASE_URL =
-  (typeof import.meta !== 'undefined' &&
-    import.meta.env &&
-    import.meta.env.VITE_API_URL) ||
-  'http://localhost:5000/api';
 
 export default function CertificateGenerator({ certificateType, onClose, onSuccess }) {
   const { user } = useAuth();
@@ -91,7 +86,7 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
 
       // Call backend API
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/cert/create`, {
+      const response = await fetch(apiUrl('/api/cert/create'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

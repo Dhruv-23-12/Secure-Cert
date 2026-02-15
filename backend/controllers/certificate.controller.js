@@ -393,7 +393,13 @@ export const downloadCertificate = async (req, res) => {
     console.log('🚀 Launching Puppeteer...');
     const browser = await puppeteer.launch({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process',
+      ],
     });
     const page = await browser.newPage();
 
