@@ -1,134 +1,198 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
 
-{% block styles %}
-.certificate-content {
-padding: 40px;
-box-sizing: border-box;
-height: 100%;
-background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-border: 20px solid #1e40af;
-position: relative;
-display: flex;
-flex-direction: column;
-justify-content: center;
-align-items: center;
-text-align: center;
-}
-.corner-decoration {
-position: absolute;
-width: 100px;
-height: 100px;
-border: 4px solid #1e3a8a;
-}
-.top-left { top: 20px; left: 20px; border-right: none; border-bottom: none; }
-.top-right { top: 20px; right: 20px; border-left: none; border-bottom: none; }
-.bottom-left { bottom: 20px; left: 20px; border-right: none; border-top: none; }
-.bottom-right { bottom: 20px; right: 20px; border-left: none; border-top: none; }
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 0;
+        }
 
-.header-logo {
-margin-bottom: 20px;
-}
-.title {
-font-family: 'Times New Roman', serif;
-font-size: 48px;
-color: #1e3a8a;
-margin-bottom: 10px;
-text-transform: uppercase;
-letter-spacing: 2px;
-}
-.subtitle {
-font-size: 24px;
-color: #4b5563;
-margin-bottom: 30px;
-}
-.recipient-name {
-font-family: 'Great Vibes', cursive, serif; /* Fallback to serif if font not loaded */
-font-size: 64px;
-color: #1e40af;
-margin: 20px 0;
-border-bottom: 2px solid #93c5fd;
-display: inline-block;
-padding: 0 40px 10px;
-}
-.body-text {
-font-size: 18px;
-color: #374151;
-line-height: 1.6;
-max-width: 80%;
-margin: 0 auto 40px;
-}
-.event-details {
-font-weight: bold;
-color: #1f2937;
-}
-.footer {
-width: 80%;
-display: flex;
-justify-content: space-between;
-align-items: flex-end;
-margin-top: 40px;
-}
-.signature-line {
-border-top: 2px solid #1f2937;
-width: 200px;
-margin-bottom: 10px;
-}
-.signature-title {
-font-weight: bold;
-color: #1f2937;
-}
-.signature-subtitle {
-font-size: 14px;
-color: #6b7280;
-}
-.qr-code {
-margin-bottom: 10px;
-border: 4px solid white;
-box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-{% endblock %}
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-{% block content %}
-<div class="certificate-content">
-    <div class="corner-decoration top-left"></div>
-    <div class="corner-decoration top-right"></div>
-    <div class="corner-decoration bottom-left"></div>
-    <div class="corner-decoration bottom-right"></div>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            width: 297mm;
+            height: 210mm;
+            background: white;
+        }
 
-    <div class="header-logo">
-        <!-- SVG Icon placeholder or image -->
-        <svg style="width: 64px; height: 64px; color: #1e40af;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
-        </svg>
-    </div>
+        .certificate-content {
+            width: 297mm;
+            height: 210mm;
+            padding: 40px;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border: 20px solid #1e40af;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
 
-    <h1 class="title">Certificate of Achievement</h1>
-    <div class="subtitle">This certificate is proudly presented to</div>
+        .corner-decoration {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border: 4px solid #1e3a8a;
+        }
 
-    <div class="recipient-name">{{ studentName }}</div>
+        .top-left {
+            top: 20px;
+            left: 20px;
+            border-right: none;
+            border-bottom: none;
+        }
 
-    <p class="body-text">
-        For outstanding performance and valid participation in the
-        <span class="event-details">{{ eventName }}</span>,
-        organized by <span class="event-details">{{ organizer }}</span>
-        on <span class="event-details">{{ eventDate }}</span>.
-        Your innovative approach and technical skills were truly exemplary.
-    </p>
+        .top-right {
+            top: 20px;
+            right: 20px;
+            border-left: none;
+            border-bottom: none;
+        }
 
-    <div class="footer">
-        <div style="text-align: center;">
-            <div class="qr-code">
-                <img src="{{ qrCodeDataUri }}" width="96" height="96" alt="QR Code">
+        .bottom-left {
+            bottom: 20px;
+            left: 20px;
+            border-right: none;
+            border-top: none;
+        }
+
+        .bottom-right {
+            bottom: 20px;
+            right: 20px;
+            border-left: none;
+            border-top: none;
+        }
+
+        .header-logo {
+            margin-bottom: 20px;
+        }
+
+        .title {
+            font-family: 'Times New Roman', serif;
+            font-size: 48px;
+            color: #1e3a8a;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            font-size: 24px;
+            color: #4b5563;
+            margin-bottom: 30px;
+        }
+
+        .recipient-name {
+            font-family: 'Georgia', serif;
+            font-size: 56px;
+            color: #1e40af;
+            margin: 20px 0;
+            border-bottom: 2px solid #93c5fd;
+            display: inline-block;
+            padding: 0 40px 10px;
+            font-style: italic;
+        }
+
+        .body-text {
+            font-size: 18px;
+            color: #374151;
+            line-height: 1.6;
+            max-width: 80%;
+            margin: 0 auto 40px;
+        }
+
+        .event-details {
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .footer {
+            width: 80%;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-top: 40px;
+        }
+
+        .signature-line {
+            border-top: 2px solid #1f2937;
+            width: 200px;
+            margin-bottom: 10px;
+        }
+
+        .signature-title {
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .signature-subtitle {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .qr-code {
+            margin-bottom: 10px;
+            border: 4px solid white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="certificate-content">
+        <div class="corner-decoration top-left"></div>
+        <div class="corner-decoration top-right"></div>
+        <div class="corner-decoration bottom-left"></div>
+        <div class="corner-decoration bottom-right"></div>
+
+        <div class="header-logo">
+            <svg style="width: 64px; height: 64px; color: #1e40af;" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+            </svg>
+        </div>
+
+        <h1 class="title">Certificate of Achievement</h1>
+        <div class="subtitle">This certificate is proudly presented to</div>
+
+        <div class="recipient-name">{{ studentName }}</div>
+
+        <p class="body-text">
+            For outstanding performance and valid participation in the
+            <span class="event-details">{{ eventName }}</span>,
+            organized by <span class="event-details">{{ organizer }}</span>
+            on <span class="event-details">{{ eventDate }}</span>.
+            Your innovative approach and technical skills were truly exemplary.
+        </p>
+
+        <div class="footer">
+            <div style="text-align: center;">
+                <div class="qr-code">
+                    <img src="{{ qrCodeDataUri }}" width="96" height="96" alt="QR Code">
+                </div>
+                <div style="font-size: 10px; color: #6b7280;">ID: {{ certificateId }}</div>
             </div>
-            <div style="font-size: 10px; color: #6b7280;">ID: {{ certificateId }}</div>
-        </div>
 
-        <div style="text-align: center;">
-            <div class="signature-line"></div>
-            <div class="signature-title">Event Organizer</div>
-            <div class="signature-subtitle">{{ organizer }}</div>
+            <div style="text-align: center;">
+                <div class="signature-line"></div>
+                <div class="signature-title">Event Organizer</div>
+                <div class="signature-subtitle">{{ organizer }}</div>
+            </div>
         </div>
     </div>
-</div>
-{% endblock %}
+</body>
+
+</html>

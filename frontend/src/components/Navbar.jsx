@@ -34,18 +34,18 @@ export default function Navbar() {
     function handleClickOutside(event) {
       // Check if click is outside both the button and dropdown
       if (
-        dropdownRef.current && 
+        dropdownRef.current &&
         buttonRef.current &&
-        !dropdownRef.current.contains(event.target) && 
+        !dropdownRef.current.contains(event.target) &&
         !buttonRef.current.contains(event.target)
       ) {
         setDropdownOpen(false);
       }
       // Check if click is outside both the hamburger button and mobile menu
       if (
-        mobileMenuRef.current && 
+        mobileMenuRef.current &&
         hamburgerRef.current &&
-        !mobileMenuRef.current.contains(event.target) && 
+        !mobileMenuRef.current.contains(event.target) &&
         !hamburgerRef.current.contains(event.target)
       ) {
         setMobileMenuOpen(false);
@@ -54,7 +54,7 @@ export default function Navbar() {
 
     // Add click event listener to the document
     document.addEventListener('mousedown', handleClickOutside);
-    
+
     // Cleanup
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -87,7 +87,7 @@ export default function Navbar() {
                 Home
                 <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-indigo-600 scale-x-0 group-hover:scale-x-100 transition-transform origin-right duration-500"></span>
               </Link>
-              <Link to="/verify/demo-certificate" className="group relative text-gray-700 hover:text-indigo-700 font-medium">
+              <Link to="/verify" className="group relative text-gray-700 hover:text-indigo-700 font-medium">
                 Verify
                 <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-indigo-600 scale-x-0 group-hover:scale-x-100 transition-transform origin-right duration-500"></span>
               </Link>
@@ -202,7 +202,7 @@ export default function Navbar() {
         </div>
         {/* Mobile Navigation Menu (show on <=900px) */}
         {mobileMenuOpen && (
-          <div 
+          <div
             ref={mobileMenuRef}
             className="show-900 flex flex-col gap-y-2 bg-white shadow rounded-lg border border-gray-200 mt-3 mx-2 p-3 z-50 relative"
           >
@@ -210,7 +210,7 @@ export default function Navbar() {
               Home
               <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-indigo-600 scale-x-0 group-hover:scale-x-100 transition-transform origin-right duration-500"></span>
             </Link>
-            <Link to="/verify/demo-certificate" className="group relative block text-gray-700 hover:text-indigo-700 font-medium px-4 py-2 rounded transition" onClick={() => setMobileMenuOpen(false)}>
+            <Link to="/verify" className="group relative block text-gray-700 hover:text-indigo-700 font-medium px-4 py-2 rounded transition" onClick={() => setMobileMenuOpen(false)}>
               Verify
               <span className="absolute left-0 -bottom-1 w-full h-0.5 bg-indigo-600 scale-x-0 group-hover:scale-x-100 transition-transform origin-right duration-500"></span>
             </Link>
@@ -234,15 +234,15 @@ export default function Navbar() {
             )}
             {!user && (
               <div className="flex flex-col gap-y-2 pt-2 border-t border-gray-200">
-                <Link 
-                  to="/login" 
+                <Link
+                  to="/login"
                   className="w-full block text-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition-colors duration-200"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Login
                 </Link>
-                <Link 
-                  to="/signup" 
+                <Link
+                  to="/signup"
                   className="w-full block text-center px-4 py-2 border border-indigo-600 text-sm font-medium rounded-md text-indigo-600 bg-white hover:bg-indigo-50 transition-colors duration-200"
                   onClick={() => setMobileMenuOpen(false)}
                 >

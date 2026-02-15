@@ -13,7 +13,8 @@ const __dirname = path.dirname(__filename);
 
 // Configure Nunjucks
 nunjucks.configure(path.join(__dirname, '../templates'), {
-  autoescape: true,
+  autoescape: false,
+  noCache: true,
   express: null
 });
 

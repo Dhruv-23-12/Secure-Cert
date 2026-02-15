@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
@@ -9,6 +9,7 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recha
 import CertificateTypeSelector from '../components/CertificateTypeSelector';
 import CertificateGenerator from '../components/CertificateGenerator';
 import CertificatePreviewModal from '../components/CertificatePreviewModal';
+import jsQR from 'jsqr';
 
 const stats = [
   { label: 'Total Certificates', value: 127, change: '+5 from last week' },
@@ -20,6 +21,7 @@ const stats = [
 const tabs = [
   { name: 'Add Certificate/Bill', key: 'add' },
   { name: 'Manage Certificates', key: 'manage' },
+  { name: 'Verify Certificate', key: 'verify' },
   { name: 'Analytics', key: 'analytics' },
 ];
 
@@ -60,6 +62,10 @@ const customNavbarStyles = `
     .hide-900 { display: flex !important; }
     .show-900 { display: none !important; }
   }
+  @keyframes scan {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
 `;
 
 export default function AdminDashboard() {
@@ -70,6 +76,226 @@ export default function AdminDashboard() {
   const [selectedCertificateType, setSelectedCertificateType] = useState(null);
   const [activityLog, setActivityLog] = useState([]);
   const [previewCert, setPreviewCert] = useState(null);
+
+  // --- Verify Certificate State ---
+  const [verifyQuery, setVerifyQuery] = useState('');
+  const [verifyResult, setVerifyResult] = useState(null);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+  const [verifyTab, setVerifyTab] = useState('reference');
+  const [verifyQrMode, setVerifyQrMode] = useState('upload');
+  const [verifyQrFile, setVerifyQrFile] = useState(null);
+  const [verifyQrPreview, setVerifyQrPreview] = useState(null);
+  const [verifyQrData, setVerifyQrData] = useState(null);
+  const [verifyCameraActive, setVerifyCameraActive] = useState(false);
+  const [verifyCameraError, setVerifyCameraError] = useState('');
+  const [verifyScanning, setVerifyScanning] = useState(false);
+  const [verifyScanStatus, setVerifyScanStatus] = useState('idle');
+  const [verifyQrScanning, setVerifyQrScanning] = useState(false);
+  const verifyVideoRef = useRef(null);
+  const verifyCanvasRef = useRef(null);
+  const verifyStreamRef = useRef(null);
+  const verifyFileInputRef = useRef(null);
+
+  // Stop camera helper
+  const stopVerifyCamera = useCallback(() => {
+    if (verifyStreamRef.current) {
+      verifyStreamRef.current.getTracks().forEach(track => track.stop());
+      verifyStreamRef.current = null;
+    }
+    setVerifyCameraActive(false);
+    setVerifyScanning(false);
+    setVerifyScanStatus('idle');
+  }, []);
+
+  // Cleanup camera on unmount or tab change
+  useEffect(() => {
+    return () => stopVerifyCamera();
+  }, [stopVerifyCamera]);
+
+  // Scan uploaded image for QR code — aggressive multi-region + grid scanning
+  useEffect(() => {
+    if (verifyQrFile && verifyQrPreview && verifyQrFile.type.startsWith('image/')) {
+      setVerifyQrScanning(true);
+      const img = new window.Image();
+      img.src = verifyQrPreview;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        const W = img.width;
+        const H = img.height;
+
+        // Helper: try scanning a region with upscaling
+        const tryScan = (x, y, w, h) => {
+          if (w < 10 || h < 10) return null;
+          const scale = Math.max(1, Math.min(4, 1000 / Math.min(w, h)));
+          canvas.width = Math.floor(w * scale);
+          canvas.height = Math.floor(h * scale);
+          context.drawImage(img, x, y, w, h, 0, 0, canvas.width, canvas.height);
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+          return code ? code.data : null;
+        };
+
+        // 1. Full image
+        let result = tryScan(0, 0, W, H);
+        if (result) { setVerifyQrData(result); setVerifyQrScanning(false); return; }
+
+        // 2. 3x3 grid scan (covers all areas including center)
+        for (let row = 0; row < 3 && !result; row++) {
+          for (let col = 0; col < 3 && !result; col++) {
+            result = tryScan(
+              Math.floor(col * W / 3), Math.floor(row * H / 3),
+              Math.floor(W / 3), Math.floor(H / 3)
+            );
+          }
+        }
+        if (result) { setVerifyQrData(result); setVerifyQrScanning(false); return; }
+
+        // 3. Overlapping center strips (bottom-center where QR codes often are on certificates)
+        const centerRegions = [
+          { x: W * 0.25, y: H * 0.6, w: W * 0.5, h: H * 0.4 },   // bottom-center
+          { x: W * 0.2, y: H * 0.7, w: W * 0.6, h: H * 0.3 },    // lower-center wide
+          { x: W * 0.3, y: H * 0.65, w: W * 0.4, h: H * 0.3 },   // lower-center narrow
+          { x: W * 0.35, y: H * 0.7, w: W * 0.3, h: H * 0.25 },  // tight bottom-center
+          { x: 0, y: H * 0.65, w: W, h: H * 0.35 },               // full-width bottom strip
+          { x: W * 0.25, y: H * 0.25, w: W * 0.5, h: H * 0.5 },  // center of image
+        ];
+        for (const r of centerRegions) {
+          result = tryScan(r.x, r.y, r.w, r.h);
+          if (result) { setVerifyQrData(result); setVerifyQrScanning(false); return; }
+        }
+
+        // 4. 4x4 grid for very small QR codes
+        for (let row = 0; row < 4 && !result; row++) {
+          for (let col = 0; col < 4 && !result; col++) {
+            result = tryScan(
+              Math.floor(col * W / 4), Math.floor(row * H / 4),
+              Math.floor(W / 4), Math.floor(H / 4)
+            );
+          }
+        }
+        if (result) { setVerifyQrData(result); setVerifyQrScanning(false); return; }
+
+        // 5. Quadrants with overlap
+        const quadrants = [
+          { x: 0, y: H * 0.4, w: W * 0.6, h: H * 0.6 },         // bottom-left overlap
+          { x: W * 0.4, y: H * 0.4, w: W * 0.6, h: H * 0.6 },   // bottom-right overlap
+          { x: 0, y: 0, w: W * 0.6, h: H * 0.6 },                // top-left overlap
+          { x: W * 0.4, y: 0, w: W * 0.6, h: H * 0.6 },          // top-right overlap
+        ];
+        for (const r of quadrants) {
+          result = tryScan(r.x, r.y, r.w, r.h);
+          if (result) { setVerifyQrData(result); setVerifyQrScanning(false); return; }
+        }
+
+        setVerifyQrScanning(false);
+      };
+    }
+  }, [verifyQrFile, verifyQrPreview]);
+
+  const handleVerifyFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setVerifyQrFile(e.target.files[0]);
+      setVerifyQrPreview(URL.createObjectURL(e.target.files[0]));
+      setVerifyQrData(null);
+      setVerifyResult(null);
+    }
+  };
+
+  const handleVerifyStartCamera = async () => {
+    setVerifyCameraError('');
+    setVerifyCameraActive(true);
+    setVerifyScanStatus('scanning');
+    try {
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } });
+      }
+      verifyStreamRef.current = stream;
+      if (verifyVideoRef.current) {
+        verifyVideoRef.current.srcObject = stream;
+        await verifyVideoRef.current.play();
+        setVerifyScanning(true);
+        const checkReady = () => {
+          if (verifyVideoRef.current?.readyState >= 2 && verifyVideoRef.current?.videoWidth > 0) {
+            scanVerifyQR();
+          } else {
+            setTimeout(checkReady, 100);
+          }
+        };
+        checkReady();
+      }
+    } catch {
+      setVerifyCameraError('Unable to access camera. Please allow camera access.');
+      setVerifyCameraActive(false);
+      setVerifyScanStatus('error');
+    }
+  };
+
+  const scanVerifyQR = () => {
+    if (!verifyVideoRef.current || !verifyCanvasRef.current) return;
+    const video = verifyVideoRef.current;
+    const canvas = verifyCanvasRef.current;
+    const context = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    if (canvas.width === 0 || canvas.height === 0) { setTimeout(scanVerifyQR, 100); return; }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    try {
+      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth', threshold: 0.1 });
+      if (code) {
+        setVerifyScanStatus('found');
+        setVerifyScanning(false);
+        setVerifyQrData(code.data);
+        // Auto-verify after scanning
+        handleVerifyCertificate(code.data);
+        return;
+      }
+      requestAnimationFrame(scanVerifyQR);
+    } catch {
+      setVerifyScanStatus('error');
+      setVerifyCameraError('Error scanning QR code.');
+      stopVerifyCamera();
+    }
+  };
+
+  const handleVerifyCertificate = async (scannedData = null) => {
+    const certId = scannedData || verifyQrData || verifyQuery.trim();
+    if (!certId) {
+      setVerifyError('Please enter a Certificate ID, scan a QR code, or upload a QR image.');
+      return;
+    }
+    setVerifyLoading(true);
+    setVerifyError('');
+    setVerifyResult(null);
+    try {
+      const response = await fetch(`/api/cert/verify/${encodeURIComponent(certId)}`);
+      const data = await response.json();
+      if (data.success) {
+        setVerifyResult({ ...data.data, found: true });
+      } else {
+        setVerifyResult({ found: false, status: 'Invalid', message: data.message || 'Certificate not found' });
+      }
+    } catch {
+      setVerifyError('Network error. Please try again.');
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  const resetVerify = () => {
+    setVerifyQuery('');
+    setVerifyResult(null);
+    setVerifyError('');
+    setVerifyQrFile(null);
+    setVerifyQrPreview(null);
+    setVerifyQrData(null);
+    stopVerifyCamera();
+  };
 
   // Fetch certificates from API
   const fetchCertificates = async () => {
@@ -567,6 +793,303 @@ export default function AdminDashboard() {
                   </div>
                 )}
               </>
+            )}
+          </div>
+        )}
+        {activeTab === 'verify' && (
+          <div className="bg-white rounded-lg shadow p-4 sm:p-8">
+            <div className="flex justify-between items-center mb-2">
+              <h2 className="text-lg font-semibold text-gray-900">Verify Certificate</h2>
+              {(verifyResult || verifyQrData || verifyQuery) && (
+                <button onClick={resetVerify} className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">Reset</button>
+              )}
+            </div>
+            <p className="text-gray-500 text-sm mb-6">Enter a reference number or scan a QR code to check if a certificate is valid.</p>
+
+            {/* Sub-tabs: Reference Number | QR Code */}
+            <div className="flex mb-6 rounded-lg overflow-hidden border border-gray-200">
+              <button
+                className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${verifyTab === 'reference' ? 'bg-indigo-50 text-indigo-700' : 'bg-white text-gray-500 hover:text-gray-700'}`}
+                onClick={() => { setVerifyTab('reference'); stopVerifyCamera(); }}
+              >
+                📝 Reference Number
+              </button>
+              <button
+                className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${verifyTab === 'qr' ? 'bg-indigo-50 text-indigo-700' : 'bg-white text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setVerifyTab('qr')}
+              >
+                📷 QR Code Scanner
+              </button>
+            </div>
+
+            {/* Reference Number Input */}
+            {verifyTab === 'reference' && (
+              <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                <input
+                  type="text"
+                  placeholder="e.g. PPSU-CERT-2026-XXXXXX"
+                  value={verifyQuery}
+                  onChange={(e) => setVerifyQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleVerifyCertificate()}
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base font-mono"
+                />
+                <button
+                  onClick={() => handleVerifyCertificate()}
+                  disabled={verifyLoading || !verifyQuery.trim()}
+                  className="px-8 py-3 bg-indigo-600 text-white rounded-lg font-semibold shadow hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {verifyLoading ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
+                      Verifying...
+                    </span>
+                  ) : '🔍 Verify'}
+                </button>
+              </div>
+            )}
+
+            {/* QR Code Scanner */}
+            {verifyTab === 'qr' && (
+              <div className="mb-6">
+                {/* QR Mode Toggle */}
+                <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                  <button
+                    className={`flex-1 flex items-center justify-center gap-2 border rounded-lg py-2.5 px-4 font-semibold transition ${verifyQrMode === 'upload' ? 'bg-white border-indigo-300 text-indigo-700 shadow' : 'bg-gray-100 border-gray-200 text-gray-500'}`}
+                    onClick={() => { setVerifyQrMode('upload'); stopVerifyCamera(); }}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Upload QR Image
+                  </button>
+                  <button
+                    className={`flex-1 flex items-center justify-center gap-2 border rounded-lg py-2.5 px-4 font-semibold transition ${verifyQrMode === 'camera' ? 'bg-gray-900 border-gray-900 text-white shadow' : 'bg-gray-100 border-gray-200 text-gray-500'}`}
+                    onClick={() => setVerifyQrMode('camera')}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h2l2-3h10l2 3h2a2 2 0 012 2v10a2 2 0 01-2 2H3a2 2 0 01-2-2V9a2 2 0 012-2z" />
+                      <circle cx="12" cy="13" r="4" />
+                    </svg>
+                    Scan with Camera
+                  </button>
+                </div>
+
+                {/* Upload QR Image */}
+                {verifyQrMode === 'upload' && (
+                  <>
+                    <div
+                      className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 rounded-xl bg-indigo-50 py-8 px-4 mb-4 cursor-pointer hover:border-indigo-400 transition"
+                      onClick={() => verifyFileInputRef.current?.click()}
+                    >
+                      <input type="file" ref={verifyFileInputRef} className="hidden" accept="image/*" onChange={handleVerifyFileChange} />
+                      <svg className="w-12 h-12 text-indigo-400 mb-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <p className="text-gray-500 text-sm text-center">Click to upload a QR code image</p>
+                    </div>
+                    {verifyQrFile && (
+                      <div className="flex flex-col items-center gap-2 mb-4">
+                        <div className="text-sm text-gray-600">
+                          File: <span className="font-medium">{verifyQrFile.name}</span>
+                        </div>
+                        {verifyQrFile.type.startsWith('image/') && verifyQrPreview && (
+                          <img src={verifyQrPreview} alt="QR Preview" className="max-h-40 rounded shadow" />
+                        )}
+                        {verifyQrScanning && (
+                          <div className="text-indigo-600 text-sm bg-indigo-50 p-2 rounded flex items-center gap-2">
+                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
+                            Scanning image for QR code...
+                          </div>
+                        )}
+                        {verifyQrData && (
+                          <div className="text-green-600 text-sm bg-green-50 p-2 rounded flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                            QR Code detected! Data: <span className="font-mono text-xs">{verifyQrData}</span>
+                          </div>
+                        )}
+                        {!verifyQrData && !verifyQrScanning && (
+                          <div className="text-amber-600 text-sm bg-amber-50 p-2 rounded flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            Could not auto-detect QR code. Try camera scan or use Reference Number tab.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {verifyQrFile && !verifyQrScanning && (
+                      <button
+                        onClick={() => handleVerifyCertificate()}
+                        disabled={verifyLoading || !verifyQrData}
+                        className={`w-full px-6 py-3 rounded-lg font-semibold shadow transition ${verifyQrData ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                      >
+                        {verifyLoading ? 'Verifying...' : verifyQrData ? '🔍 Verify Scanned QR Code' : '🔍 No QR Data Found'}
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {/* Camera Scanner */}
+                {verifyQrMode === 'camera' && (
+                  <div className="w-full border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center py-6 px-4">
+                    {!verifyCameraActive ? (
+                      <>
+                        <p className="text-gray-700 text-sm mb-3">Scan a QR code using your camera</p>
+                        <button
+                          className="flex items-center gap-2 bg-indigo-600 text-white font-medium px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition text-sm"
+                          onClick={handleVerifyStartCamera}
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h2l2-3h10l2 3h2a2 2 0 012 2v10a2 2 0 01-2 2H3a2 2 0 01-2-2V9a2 2 0 012-2z" />
+                            <circle cx="12" cy="13" r="4" />
+                          </svg>
+                          Start Camera
+                        </button>
+                      </>
+                    ) : (
+                      <div className="relative w-full max-w-lg">
+                        <video ref={verifyVideoRef} className="w-full h-[400px] object-cover rounded-lg" autoPlay playsInline />
+                        <canvas ref={verifyCanvasRef} className="hidden" />
+                        {/* Scanning overlay */}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className={`w-56 h-56 border-2 ${verifyScanStatus === 'found' ? 'border-green-500' : 'border-white'} rounded-lg relative transition-colors`}>
+                            <div className={`absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 ${verifyScanStatus === 'found' ? 'border-green-500' : 'border-white'}`}></div>
+                            <div className={`absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 ${verifyScanStatus === 'found' ? 'border-green-500' : 'border-white'}`}></div>
+                            <div className={`absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 ${verifyScanStatus === 'found' ? 'border-green-500' : 'border-white'}`}></div>
+                            <div className={`absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 ${verifyScanStatus === 'found' ? 'border-green-500' : 'border-white'}`}></div>
+                            {verifyScanStatus === 'scanning' && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-full h-1 bg-white bg-opacity-50 rounded-full overflow-hidden">
+                                  <div className="h-full bg-white" style={{ animation: 'scan 1.5s linear infinite' }}></div>
+                                </div>
+                              </div>
+                            )}
+                            {verifyScanStatus === 'found' && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-16 h-16 bg-green-500 bg-opacity-20 rounded-full flex items-center justify-center">
+                                  <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Status bar */}
+                        <div className="absolute bottom-4 left-0 right-0 text-center">
+                          <p className={`text-sm py-2 px-4 rounded-full inline-block ${verifyScanStatus === 'found' ? 'bg-green-500 bg-opacity-70 text-white'
+                            : verifyScanStatus === 'error' ? 'bg-red-500 bg-opacity-70 text-white'
+                              : 'bg-black bg-opacity-50 text-white'
+                            }`}>
+                            {verifyScanStatus === 'scanning' && 'Scanning for QR code...'}
+                            {verifyScanStatus === 'found' && 'QR code found! Verifying...'}
+                            {verifyScanStatus === 'error' && 'Error scanning'}
+                            {verifyScanStatus === 'idle' && 'Position QR code within the frame'}
+                          </p>
+                        </div>
+                        {/* Stop button */}
+                        <div className="absolute top-3 right-3">
+                          <button className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg" onClick={stopVerifyCamera}>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {verifyCameraError && <div className="text-red-500 text-xs mt-2">{verifyCameraError}</div>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Error */}
+            {verifyError && (
+              <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {verifyError}
+              </div>
+            )}
+
+            {/* Result */}
+            {verifyResult && (
+              <div className={`rounded-xl border-2 p-6 transition-all duration-300 ${verifyResult.status === 'Valid'
+                ? 'border-green-400 bg-green-50'
+                : verifyResult.status === 'Tampered'
+                  ? 'border-yellow-400 bg-yellow-50'
+                  : verifyResult.status === 'Revoked'
+                    ? 'border-gray-400 bg-gray-50'
+                    : 'border-red-400 bg-red-50'
+                }`}>
+                {/* Status Badge */}
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-3xl">
+                    {verifyResult.status === 'Valid' ? '✅' : verifyResult.status === 'Tampered' ? '⚠️' : verifyResult.status === 'Revoked' ? '🚫' : '❌'}
+                  </span>
+                  <div>
+                    <h3 className={`text-xl font-bold ${verifyResult.status === 'Valid' ? 'text-green-800'
+                      : verifyResult.status === 'Tampered' ? 'text-yellow-800'
+                        : verifyResult.status === 'Revoked' ? 'text-gray-700'
+                          : 'text-red-800'
+                      }`}>
+                      Certificate is {verifyResult.status}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {verifyResult.status === 'Valid' && 'This certificate is authentic and has not been tampered with.'}
+                      {verifyResult.status === 'Tampered' && 'Warning: The certificate data has been modified. Hash mismatch detected.'}
+                      {verifyResult.status === 'Revoked' && 'This certificate has been revoked by the issuing authority.'}
+                      {verifyResult.status === 'Invalid' && (verifyResult.message || 'No certificate found with this ID.')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Certificate Details */}
+                {verifyResult.found && verifyResult.status !== 'Invalid' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-200">
+                    <div>
+                      <span className="text-xs text-gray-500 uppercase tracking-wide">Certificate ID</span>
+                      <p className="font-mono text-sm font-semibold text-indigo-700">{verifyResult.certificateId}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500 uppercase tracking-wide">Student Name</span>
+                      <p className="font-semibold text-gray-900">{verifyResult.studentName}</p>
+                    </div>
+                    {verifyResult.enrollmentNo && (
+                      <div>
+                        <span className="text-xs text-gray-500 uppercase tracking-wide">Enrollment No</span>
+                        <p className="font-semibold text-gray-900">{verifyResult.enrollmentNo}</p>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-xs text-gray-500 uppercase tracking-wide">Course / Type</span>
+                      <p className="font-semibold text-gray-900">{verifyResult.course || verifyResult.certificateType}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500 uppercase tracking-wide">Issue Date</span>
+                      <p className="font-semibold text-gray-900">{new Date(verifyResult.issueDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500 uppercase tracking-wide">Issuing Authority</span>
+                      <p className="font-semibold text-gray-900">{verifyResult.issuingAuthority || 'P P SAVANI UNIVERSITY'}</p>
+                    </div>
+                    {verifyResult.hashVerification && (
+                      <div className="sm:col-span-2">
+                        <span className="text-xs text-gray-500 uppercase tracking-wide">Hash Verification</span>
+                        <p className={`text-sm font-medium ${verifyResult.hashVerification.isValid ? 'text-green-700' : 'text-red-700'}`}>
+                          {verifyResult.hashVerification.isValid ? '✓ ' : '✗ '}
+                          {verifyResult.hashVerification.message}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!verifyResult && !verifyError && !verifyLoading && !verifyCameraActive && (
+              <div className="text-center py-10 text-gray-400">
+                <div className="text-5xl mb-3">🔐</div>
+                <p className="text-lg font-medium">Enter a certificate ID or scan a QR code to verify</p>
+                <p className="text-sm mt-1">Results will appear here</p>
+              </div>
             )}
           </div>
         )}

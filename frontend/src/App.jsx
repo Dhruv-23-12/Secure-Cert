@@ -80,14 +80,8 @@ function AppContent() {
               <Route path="/SecureCert-admin" element={<AdminLogin />} />
               <Route path="/signup" element={<Signup />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route
-                path="/verify/:certificateId"
-                element={
-                  <ProtectedRoute>
-                    <VerifyCertificate />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/verify" element={<VerifyCertificate />} />
+              <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
               <Route path="/demo" element={<Demo />} />
               <Route path="/about" element={<AboutUs />} />
               <Route path="/contact" element={<ContactUs />} />

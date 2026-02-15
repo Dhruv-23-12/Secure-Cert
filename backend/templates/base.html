@@ -1,4 +1,4 @@
-<!-- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
     <style>
-        /* Ensure valid CSS for @page even if orientation is missing */
         @page {
             size: A4 {
                     {
@@ -31,8 +30,6 @@
         }
 
         .container {
-
-            /* Default to A4 portrait dimensions if not provided */
             width: {
                     {
                     width | default('210mm')
@@ -54,7 +51,7 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        /* Utility Classes (Tailwind-like subset) */
+        /* Utility Classes */
         .text-center {
             text-align: center;
         }
@@ -115,4 +112,4 @@
     </div>
 </body>
 
-</html> -->
+</html>

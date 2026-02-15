@@ -1,136 +1,206 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
 
-{% block styles %}
-.certificate-content {
-padding: 40px;
-box-sizing: border-box;
-height: 100%;
-background: linear-gradient(135deg, #f0fdf4 0%, #ecfccb 100%);
-border: 20px double #15803d;
-position: relative;
-display: flex;
-flex-direction: column;
-justify-content: center;
-align-items: center;
-text-align: center;
-}
-.laurel-wreath {
-position: absolute;
-width: 100%;
-height: 100%;
-pointer-events: none;
-background-image: url('data:image/svg+xml;base64,...'); /* Could add base64 laurel wreath here */
-opacity: 0.1;
-}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 0;
+        }
 
-.header-logo {
-margin-bottom: 20px;
-}
-.title {
-font-family: 'Times New Roman', serif;
-font-size: 56px;
-color: #166534; /* Green-800 */
-margin-bottom: 10px;
-text-transform: uppercase;
-font-weight: 900;
-text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-}
-.subtitle {
-font-size: 24px;
-color: #ca8a04; /* Yellow-600 */
-margin-bottom: 30px;
-font-weight: bold;
-text-transform: uppercase;
-letter-spacing: 4px;
-}
-.recipient-name {
-font-family: sans-serif;
-font-size: 56px;
-color: #15803d;
-margin: 20px 0;
-font-weight: bold;
-padding: 10px 40px;
-background-color: rgba(255,255,255,0.5);
-border-radius: 8px;
-}
-.body-text {
-font-size: 20px;
-color: #374151;
-line-height: 1.6;
-max-width: 80%;
-margin: 0 auto 40px;
-}
-.highlight {
-font-weight: bold;
-color: #b45309; /* Amber-700 */
-}
-.footer {
-width: 80%;
-display: flex;
-justify-content: space-between;
-align-items: flex-end;
-margin-top: 40px;
-}
-.signature-area {
-text-align: center;
-}
-.signature-line {
-border-top: 2px solid #166534;
-width: 200px;
-margin-bottom: 10px;
-}
-.signature-title {
-font-weight: bold;
-color: #166534;
-}
-.qr-code {
-margin-bottom: 10px;
-border: 4px solid #166534;
-padding: 5px;
-background: white;
-}
-{% endblock %}
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-{% block content %}
-<div class="certificate-content">
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            width: 297mm;
+            height: 210mm;
+            background: white;
+        }
 
-    <div class="header-logo">
-        <svg style="width: 80px; height: 80px; color: #ca8a04;" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z">
-            </path>
-        </svg>
-    </div>
+        .certificate-content {
+            width: 297mm;
+            height: 210mm;
+            padding: 40px;
+            background: linear-gradient(135deg, #f0fdf4 0%, #ecfccb 100%);
+            border: 20px double #15803d;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
 
-    <h1 class="title">Sports Excellence</h1>
-    <div class="subtitle">Certificate of Achievement</div>
+        .header-logo {
+            margin-bottom: 20px;
+        }
 
-    <p class="body-text" style="margin-bottom: 10px;">This certifies that</p>
-    <div class="recipient-name">{{ studentName }}</div>
+        .title {
+            font-family: 'Times New Roman', serif;
+            font-size: 56px;
+            color: #166534;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            font-weight: 900;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
 
-    <p class="body-text">
-        has successfully participated and secured
-        <br>
-        <span class="highlight" style="font-size: 28px;">{{ achievement }}</span>
-        <br>
-        in <span class="highlight">{{ sportName }}</span> at the
-        <span class="highlight">{{ eventLevel }}</span>
-        <br>
-        held on {{ eventDate }}.
-    </p>
+        .subtitle {
+            font-size: 24px;
+            color: #ca8a04;
+            margin-bottom: 30px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+        }
 
-    <div class="footer">
-        <div style="text-align: center;">
-            <div class="qr-code">
-                <img src="{{ qrCodeDataUri }}" width="96" height="96" alt="QR Code">
+        .recipient-name {
+            font-family: sans-serif;
+            font-size: 56px;
+            color: #15803d;
+            margin: 20px 0;
+            font-weight: bold;
+            padding: 10px 40px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+        }
+
+        .body-text {
+            font-size: 20px;
+            color: #374151;
+            line-height: 1.6;
+            max-width: 80%;
+            margin: 0 auto 40px;
+        }
+
+        .highlight {
+            font-weight: bold;
+            color: #b45309;
+        }
+
+        .footer {
+            width: 80%;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-top: 40px;
+        }
+
+        .signature-area {
+            text-align: center;
+        }
+
+        .signature-line {
+            border-top: 2px solid #166534;
+            width: 200px;
+            margin-bottom: 10px;
+        }
+
+        .signature-title {
+            font-weight: bold;
+            color: #166534;
+        }
+
+        .qr-code {
+            margin-bottom: 10px;
+            border: 4px solid #166534;
+            padding: 5px;
+            background: white;
+        }
+
+        /* Gold corner ornaments */
+        .corner-ornament {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            border: 5px solid #ca8a04;
+        }
+
+        .co-tl {
+            top: 15px;
+            left: 15px;
+            border-right: none;
+            border-bottom: none;
+        }
+
+        .co-tr {
+            top: 15px;
+            right: 15px;
+            border-left: none;
+            border-bottom: none;
+        }
+
+        .co-bl {
+            bottom: 15px;
+            left: 15px;
+            border-right: none;
+            border-top: none;
+        }
+
+        .co-br {
+            bottom: 15px;
+            right: 15px;
+            border-left: none;
+            border-top: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="certificate-content">
+        <div class="corner-ornament co-tl"></div>
+        <div class="corner-ornament co-tr"></div>
+        <div class="corner-ornament co-bl"></div>
+        <div class="corner-ornament co-br"></div>
+
+        <div class="header-logo">
+            <svg style="width: 80px; height: 80px; color: #ca8a04;" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z">
+                </path>
+            </svg>
+        </div>
+
+        <h1 class="title">Sports Excellence</h1>
+        <div class="subtitle">Certificate of Achievement</div>
+
+        <p class="body-text" style="margin-bottom: 10px;">This certifies that</p>
+        <div class="recipient-name">{{ studentName }}</div>
+
+        <p class="body-text">
+            has successfully participated and secured
+            <br>
+            <span class="highlight" style="font-size: 28px;">{{ achievement }}</span>
+            <br>
+            in <span class="highlight">{{ sportName }}</span> at the
+            <span class="highlight">{{ eventLevel }}</span>
+            <br>
+            held on {{ eventDate }}.
+        </p>
+
+        <div class="footer">
+            <div style="text-align: center;">
+                <div class="qr-code">
+                    <img src="{{ qrCodeDataUri }}" width="96" height="96" alt="QR Code">
+                </div>
+                <div style="font-size: 10px; color: #166534;">ID: {{ certificateId }}</div>
             </div>
-            <div style="font-size: 10px; color: #166534;">ID: {{ certificateId }}</div>
-        </div>
 
-        <div class="signature-area">
-            <div class="signature-line"></div>
-            <div class="signature-title">Sports Director</div>
-            <div style="font-size: 14px; color: #166534;">P P SAVANI UNIVERSITY</div>
+            <div class="signature-area">
+                <div class="signature-line"></div>
+                <div class="signature-title">Sports Director</div>
+                <div style="font-size: 14px; color: #166534;">P P SAVANI UNIVERSITY</div>
+            </div>
         </div>
     </div>
-</div>
-{% endblock %}
+</body>
+
+</html>

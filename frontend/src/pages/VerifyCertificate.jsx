@@ -3,6 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import UserActivity from '../components/UserActivity';
 import jsQR from 'jsqr';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set up PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+).toString();
 
 const scanningStyles = `
 @keyframes scan {
@@ -15,7 +22,7 @@ const scanningStyles = `
 export default function VerifyCertificate() {
   const navigate = useNavigate();
   const { certificateId } = useParams();
-  const { user } = useAuth();
+  const { user } = useAuth() || {};
   const [tab, setTab] = useState('reference');
   const [reference, setReference] = useState('');
   const [qrFile, setQrFile] = useState(null);
@@ -78,19 +85,7 @@ export default function VerifyCertificate() {
     }
   }, [certificateId]);
 
-  // Check authentication on component mount
-  useEffect(() => {
-    if (!user) {
-      // Store the current URL to redirect back after login
-      sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
-      navigate('/login');
-    }
-  }, [user, navigate]);
-
-  // If not logged in, don't render the component
-  if (!user) {
-    return null;
-  }
+  // No auth required — anyone can verify certificates
 
   const handleUploadClick = () => {
     if (fileInputRef.current) fileInputRef.current.click();
@@ -105,7 +100,89 @@ export default function VerifyCertificate() {
     }
   };
 
-  // Scan uploaded image for QR code
+  // Helper: aggressive multi-region QR scan on a canvas imageData
+  const scanCanvasForQR = (canvas, context, W, H) => {
+    const tryScan = (x, y, w, h) => {
+      if (w < 10 || h < 10) return null;
+      const scale = Math.max(1, Math.min(4, 1000 / Math.min(w, h)));
+      canvas.width = Math.floor(w * scale);
+      canvas.height = Math.floor(h * scale);
+      context.drawImage(canvas, x, y, w, h, 0, 0, canvas.width, canvas.height);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+      return code ? code.data : null;
+    };
+
+    // For the initial full-image scan, we need to read from source
+    const tryScanSource = (sourceCanvas, x, y, w, h) => {
+      if (w < 10 || h < 10) return null;
+      const scale = Math.max(1, Math.min(4, 1000 / Math.min(w, h)));
+      const scanCanvas = document.createElement('canvas');
+      scanCanvas.width = Math.floor(w * scale);
+      scanCanvas.height = Math.floor(h * scale);
+      const scanCtx = scanCanvas.getContext('2d');
+      scanCtx.drawImage(sourceCanvas, x, y, w, h, 0, 0, scanCanvas.width, scanCanvas.height);
+      const imageData = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+      return code ? code.data : null;
+    };
+
+    // 1. Full image
+    let result = tryScanSource(canvas, 0, 0, W, H);
+    if (result) return result;
+
+    // 2. 3x3 grid scan
+    for (let row = 0; row < 3 && !result; row++) {
+      for (let col = 0; col < 3 && !result; col++) {
+        result = tryScanSource(canvas,
+          Math.floor(col * W / 3), Math.floor(row * H / 3),
+          Math.floor(W / 3), Math.floor(H / 3)
+        );
+      }
+    }
+    if (result) return result;
+
+    // 3. Targeted bottom-center strips (where QR codes appear on certificates)
+    const centerRegions = [
+      { x: W * 0.25, y: H * 0.6, w: W * 0.5, h: H * 0.4 },
+      { x: W * 0.2, y: H * 0.7, w: W * 0.6, h: H * 0.3 },
+      { x: W * 0.3, y: H * 0.65, w: W * 0.4, h: H * 0.3 },
+      { x: W * 0.35, y: H * 0.7, w: W * 0.3, h: H * 0.25 },
+      { x: 0, y: H * 0.65, w: W, h: H * 0.35 },
+      { x: W * 0.25, y: H * 0.25, w: W * 0.5, h: H * 0.5 },
+    ];
+    for (const r of centerRegions) {
+      result = tryScanSource(canvas, r.x, r.y, r.w, r.h);
+      if (result) return result;
+    }
+
+    // 4. 4x4 grid for very small QR codes
+    for (let row = 0; row < 4 && !result; row++) {
+      for (let col = 0; col < 4 && !result; col++) {
+        result = tryScanSource(canvas,
+          Math.floor(col * W / 4), Math.floor(row * H / 4),
+          Math.floor(W / 4), Math.floor(H / 4)
+        );
+      }
+    }
+    if (result) return result;
+
+    // 5. Overlapping quadrants
+    const quadrants = [
+      { x: 0, y: H * 0.4, w: W * 0.6, h: H * 0.6 },
+      { x: W * 0.4, y: H * 0.4, w: W * 0.6, h: H * 0.6 },
+      { x: 0, y: 0, w: W * 0.6, h: H * 0.6 },
+      { x: W * 0.4, y: 0, w: W * 0.6, h: H * 0.6 },
+    ];
+    for (const r of quadrants) {
+      result = tryScanSource(canvas, r.x, r.y, r.w, r.h);
+      if (result) return result;
+    }
+
+    return null;
+  };
+
+  // Scan uploaded image for QR code — aggressive multi-region scanning
   useEffect(() => {
     if (qrFile && qrPreview && qrFile.type.startsWith('image/')) {
       const img = new Image();
@@ -113,23 +190,61 @@ export default function VerifyCertificate() {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
+        const W = img.width;
+        const H = img.height;
+        canvas.width = W;
+        canvas.height = H;
         context.drawImage(img, 0, 0);
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "attemptBoth",
-        });
-
-        if (code) {
-          setQrData(code.data);
-          // Optional: Visualize success
-        } else {
-          // console.log("No QR code found in uploaded image");
-        }
+        const result = scanCanvasForQR(canvas, context, W, H);
+        if (result) setQrData(result);
       };
     }
   }, [qrFile, qrPreview]);
+
+  // Scan uploaded PDF for QR code — renders each page and scans
+  const [pdfScanning, setPdfScanning] = useState(false);
+  useEffect(() => {
+    if (qrFile && qrFile.type === 'application/pdf') {
+      let cancelled = false;
+      setPdfScanning(true);
+      const scanPdf = async () => {
+        try {
+          const arrayBuffer = await qrFile.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          const numPages = pdf.numPages;
+
+          for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            if (cancelled) return;
+            const page = await pdf.getPage(pageNum);
+            const scale = 2; // Render at 2x for better QR detection
+            const viewport = page.getViewport({ scale });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            await page.render({ canvasContext: context, viewport }).promise;
+
+            const result = scanCanvasForQR(canvas, context, canvas.width, canvas.height);
+            if (result) {
+              if (!cancelled) {
+                setQrData(result);
+                setPdfScanning(false);
+              }
+              return;
+            }
+          }
+          // No QR found in any page
+          if (!cancelled) setPdfScanning(false);
+        } catch (err) {
+          console.error('PDF QR scan error:', err);
+          if (!cancelled) setPdfScanning(false);
+        }
+      };
+      scanPdf();
+      return () => { cancelled = true; };
+    }
+  }, [qrFile]);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -284,43 +399,36 @@ export default function VerifyCertificate() {
         credentials: 'include',
       });
 
-      if (!response.ok) {
+      // Don't throw on 404 — the backend returns useful data for not-found certs
+      if (!response.ok && response.status !== 404) {
         throw new Error('Verification request failed');
       }
 
       const data = await response.json();
 
-      const isValid =
-        typeof data.valid === 'boolean'
-          ? data.valid
-          : typeof data.isValid === 'boolean'
-            ? data.isValid
-            : false;
+      // Backend returns: { success: true, message: '...', data: { status: 'Valid'|'Tampered'|'Revoked'|'Invalid', certificateId, studentName, ... } }
+      const certData = data.data || {};
+      const status = certData.status || '';
+      const isValid = data.success && (status === 'Valid');
 
-      const details = isValid
+      const details = (data.success && status !== 'Invalid')
         ? {
-          certificateId:
-            data.certificateId ||
-            data.id ||
-            trimmedReference ||
-            effectiveQrData ||
-            (qrFile && qrFile.name) ||
-            '-',
-          recipientName: data.recipientName || data.holderName || '-',
-          certificateType: data.certificateType || data.type || '-',
-          issueDate: data.issueDate || data.issuedAt || '-',
-          issuingAuthority: data.issuingAuthority || data.issuer || '-',
-          additionalData: data.additionalData || {},
+          certificateId: certData.certificateId || trimmedReference || effectiveQrData || '-',
+          recipientName: certData.studentName || '-',
+          certificateType: certData.certificateType || certData.course || '-',
+          issueDate: certData.issueDate || '-',
+          issuingAuthority: certData.issuingAuthority || 'P P SAVANI UNIVERSITY',
+          enrollmentNo: certData.enrollmentNo || '',
+          status: status,
+          hashVerification: certData.hashVerification || null,
+          additionalData: certData.additionalData || {},
         }
         : null;
 
       setVerificationResult({
         isValid,
-        message:
-          (isValid
-            ? data.message || 'Certificate is valid and authentic.'
-            : data.reason || data.message || 'Certificate is invalid.') ||
-          '',
+        status,
+        message: data.message || (isValid ? 'Certificate is valid and authentic.' : 'Certificate verification failed.'),
         details,
       });
 
@@ -332,7 +440,6 @@ export default function VerifyCertificate() {
               details?.certificateId ||
               trimmedReference ||
               effectiveQrData ||
-              (qrFile && qrFile.name) ||
               '-',
             holderName: details?.recipientName || '-',
             isValid,
@@ -360,7 +467,7 @@ export default function VerifyCertificate() {
       <p className="text-gray-500 text-center mb-8 max-w-xl">
         Verify the authenticity of a certificate by scanning the QR code or entering the reference number
       </p>
-      {user.role === 'user' ? (
+      {(!user || user.role === 'user') ? (
         <>
           <div className="w-full max-w-xl bg-white rounded-xl shadow-lg p-6 mb-10">
             <h2 className="text-lg font-semibold mb-1">Verify Certificate</h2>
@@ -463,6 +570,7 @@ export default function VerifyCertificate() {
                         type="file"
                         ref={fileInputRef}
                         className="hidden"
+                        accept="image/*,application/pdf"
                         onChange={handleFileChange}
                       />
                       <svg
@@ -480,9 +588,9 @@ export default function VerifyCertificate() {
                         <circle cx="12" cy="13" r="4" />
                       </svg>
                       <p className="text-gray-500 text-center text-sm mb-3">
-                        Click or drag file to upload
+                        Click to upload a QR code image or PDF
                         <br />
-                        (PDF, ZIP, image, etc.)
+                        (PNG, JPG, PDF, or any image format)
                       </p>
                       <button
                         type="button"
@@ -517,16 +625,22 @@ export default function VerifyCertificate() {
                             ({qrFile.type || 'Unknown type'})
                           </span>
                         </div>
-                        {qrFile.type && !qrFile.type.startsWith('image/') && (
-                          <div className="text-amber-600 text-sm mb-2 bg-amber-50 p-2 rounded">
-                            Note: Automatic QR scanning is only available for image files.
-                            For PDFs, please enter the Reference Number manually or convert to image.
-                          </div>
-                        )}
-                        {qrData && qrFile.type && qrFile.type.startsWith('image/') && (
+                        {qrData && (
                           <div className="text-green-600 text-sm mb-2 bg-green-50 p-2 rounded flex items-center gap-2">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                            QR Code detected in image!
+                            QR Code detected in {qrFile.type === 'application/pdf' ? 'PDF' : 'image'}!
+                          </div>
+                        )}
+                        {pdfScanning && qrFile.type === 'application/pdf' && !qrData && (
+                          <div className="text-indigo-600 text-sm mb-2 bg-indigo-50 p-2 rounded flex items-center gap-2">
+                            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
+                            Scanning PDF pages for QR code...
+                          </div>
+                        )}
+                        {!qrData && !pdfScanning && (qrFile.type?.startsWith('image/') || qrFile.type === 'application/pdf') && (
+                          <div className="text-amber-600 text-sm mb-2 bg-amber-50 p-2 rounded flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            Could not auto-detect QR code. Try camera scan or enter Reference Number.
                           </div>
                         )}
                         {qrFile.type && qrFile.type.startsWith('image/') && (
@@ -535,6 +649,12 @@ export default function VerifyCertificate() {
                             alt="File Preview"
                             className="max-h-40 rounded shadow"
                           />
+                        )}
+                        {qrFile.type === 'application/pdf' && (
+                          <div className="text-sm text-gray-500 flex items-center gap-2 mt-1">
+                            <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h6v6h6v10H6z" /></svg>
+                            PDF uploaded — scanning all pages for QR codes
+                          </div>
                         )}
                       </div>
                     )}
@@ -734,52 +854,28 @@ export default function VerifyCertificate() {
           {verificationResult && (
             <div className="w-full max-w-xl mb-10">
               <div
-                className={`rounded-xl shadow-lg p-6 border ${verificationResult.isValid
+                className={`rounded-xl shadow-lg p-6 border ${verificationResult.status === 'Valid'
                   ? 'bg-green-50 border-green-400'
-                  : 'bg-red-50 border-red-400'
+                  : verificationResult.status === 'Tampered'
+                    ? 'bg-yellow-50 border-yellow-400'
+                    : verificationResult.status === 'Revoked'
+                      ? 'bg-gray-50 border-gray-400'
+                      : 'bg-red-50 border-red-400'
                   }`}
               >
                 <div className="flex items-center mb-3">
-                  <span
-                    className={`mr-2 rounded-full p-1 ${verificationResult.isValid
-                      ? 'bg-green-100 text-green-600'
-                      : 'bg-red-100 text-red-600'
-                      }`}
-                  >
-                    {verificationResult.isValid ? (
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    ) : (
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    )}
+                  <span className="text-3xl mr-2">
+                    {verificationResult.status === 'Valid' ? '✅' : verificationResult.status === 'Tampered' ? '⚠️' : verificationResult.status === 'Revoked' ? '🚫' : '❌'}
                   </span>
-                  <h3 className="text-lg font-semibold">
-                    {verificationResult.isValid
-                      ? 'Valid Certificate'
-                      : 'Invalid Certificate'}
+                  <h3 className={`text-lg font-semibold ${verificationResult.status === 'Valid' ? 'text-green-800'
+                    : verificationResult.status === 'Tampered' ? 'text-yellow-800'
+                      : verificationResult.status === 'Revoked' ? 'text-gray-700'
+                        : 'text-red-800'
+                    }`}>
+                    {verificationResult.status === 'Valid' && 'Valid Certificate'}
+                    {verificationResult.status === 'Tampered' && 'Certificate Tampered'}
+                    {verificationResult.status === 'Revoked' && 'Certificate Revoked'}
+                    {(!verificationResult.status || verificationResult.status === 'Invalid') && 'Invalid Certificate'}
                   </h3>
                 </div>
                 {verificationResult.message && (
@@ -787,24 +883,34 @@ export default function VerifyCertificate() {
                     {verificationResult.message}
                   </p>
                 )}
-                {verificationResult.isValid && verificationResult.details && (
-                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                {verificationResult.details && (
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm border-t border-gray-200 pt-4 mt-2">
                     <div>
                       <dt className="font-medium text-gray-600">
                         Certificate ID
                       </dt>
-                      <dd className="text-gray-900">
+                      <dd className="text-gray-900 font-mono text-xs">
                         {verificationResult.details.certificateId}
                       </dd>
                     </div>
                     <div>
                       <dt className="font-medium text-gray-600">
-                        Recipient Name
+                        Student Name
                       </dt>
                       <dd className="text-gray-900">
                         {verificationResult.details.recipientName}
                       </dd>
                     </div>
+                    {verificationResult.details.enrollmentNo && (
+                      <div>
+                        <dt className="font-medium text-gray-600">
+                          Enrollment No
+                        </dt>
+                        <dd className="text-gray-900">
+                          {verificationResult.details.enrollmentNo}
+                        </dd>
+                      </div>
+                    )}
                     <div>
                       <dt className="font-medium text-gray-600">
                         Certificate Type
@@ -818,7 +924,7 @@ export default function VerifyCertificate() {
                         Issue Date
                       </dt>
                       <dd className="text-gray-900">
-                        {verificationResult.details.issueDate}
+                        {verificationResult.details.issueDate ? new Date(verificationResult.details.issueDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' }) : '-'}
                       </dd>
                     </div>
                     <div>
@@ -829,9 +935,20 @@ export default function VerifyCertificate() {
                         {verificationResult.details.issuingAuthority}
                       </dd>
                     </div>
+                    {verificationResult.details.hashVerification && (
+                      <div className="sm:col-span-2">
+                        <dt className="font-medium text-gray-600">
+                          Hash Verification
+                        </dt>
+                        <dd className={`text-sm font-medium ${verificationResult.details.hashVerification.isValid ? 'text-green-700' : 'text-red-700'}`}>
+                          {verificationResult.details.hashVerification.isValid ? '✓ ' : '✗ '}
+                          {verificationResult.details.hashVerification.message}
+                        </dd>
+                      </div>
+                    )}
 
                     {/* Dynamic Fields based on Certificate Type */}
-                    {verificationResult.details.certificateType.toLowerCase() === 'hackathon' && (
+                    {verificationResult.details.certificateType?.toLowerCase() === 'hackathon' && (
                       <>
                         <div>
                           <dt className="font-medium text-gray-600">Event Name</dt>
@@ -844,7 +961,7 @@ export default function VerifyCertificate() {
                       </>
                     )}
 
-                    {verificationResult.details.certificateType.toLowerCase() === 'sports' && (
+                    {verificationResult.details.certificateType?.toLowerCase() === 'sports' && (
                       <>
                         <div>
                           <dt className="font-medium text-gray-600">Sport</dt>
@@ -861,7 +978,7 @@ export default function VerifyCertificate() {
                       </>
                     )}
 
-                    {verificationResult.details.certificateType.toLowerCase() === 'marksheet' && (
+                    {verificationResult.details.certificateType?.toLowerCase() === 'marksheet' && (
                       <>
                         <div>
                           <dt className="font-medium text-gray-600">Course</dt>
