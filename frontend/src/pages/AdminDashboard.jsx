@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { apiUrl } from '../config/api';
 import QRCode from 'react-qr-code';
 import React from 'react';
 import { PDFDocument, rgb } from 'pdf-lib';
@@ -274,7 +273,7 @@ export default function AdminDashboard() {
     setVerifyError('');
     setVerifyResult(null);
     try {
-      const response = await fetch(apiUrl(`/api/cert/verify/${encodeURIComponent(certId)}`));
+      const response = await fetch(`/api/cert/verify/${encodeURIComponent(certId)}`);
       const data = await response.json();
       if (data.success) {
         setVerifyResult({ ...data.data, found: true });
@@ -304,7 +303,7 @@ export default function AdminDashboard() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch(apiUrl('/api/cert/list?limit=50'), {
+      const response = await fetch('/api/cert/list?limit=50', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -1194,7 +1193,7 @@ function AdminUploadSection({ onActivity }) {
       // Generate a temporary ID for the certificate request
       const tempId = generateIRN();
 
-      const response = await fetch(apiUrl('/api/cert/create'), {
+      const response = await fetch('/api/cert/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

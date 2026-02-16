@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { apiUrl } from '../config/api';
 import HackathonCertificate from '../pages/HackathonCertificate';
 import SportsCertificate from '../pages/SportsCertificate';
 import Marksheet from '../pages/Marksheet';
@@ -86,7 +85,7 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
 
       // Call backend API
       const token = localStorage.getItem('token');
-      const response = await fetch(apiUrl('/api/cert/create'), {
+      const response = await fetch('/api/cert/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

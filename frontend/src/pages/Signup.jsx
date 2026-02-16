@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Lottie from 'lottie-react';
 import signupAnimation from '../assets/animations/signup.json';
-import { apiUrl } from '../config/api';
 
 export default function Signup() {
   const [form, setForm] = useState({
@@ -78,7 +77,7 @@ export default function Signup() {
 
     setSubmitting(true);
     try {
-      const response = await fetch(apiUrl('/api/auth/register'), {
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

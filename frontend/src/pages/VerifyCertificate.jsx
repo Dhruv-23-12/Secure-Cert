@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { apiUrl } from '../config/api';
 import UserActivity from '../components/UserActivity';
 import jsQR from 'jsqr';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -391,7 +390,7 @@ export default function VerifyCertificate() {
         formData.append('file', qrFile);
       }
 
-      const response = await fetch(apiUrl('/api/cert/verify'), {
+      const response = await fetch('/api/cert/verify', {
         method: 'POST',
         body: formData,
         headers: {
