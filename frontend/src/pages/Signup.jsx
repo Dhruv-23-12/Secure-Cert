@@ -2,13 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Lottie from 'lottie-react';
 import signupAnimation from '../assets/animations/signup.json';
-
-// API base URL (Vite env or fallback to localhost backend)
-const API_BASE_URL =
-  (typeof import.meta !== 'undefined' &&
-    import.meta.env &&
-    import.meta.env.VITE_API_URL) ||
-  'http://localhost:5000/api';
+import { apiUrl } from '../config/api';
 
 export default function Signup() {
   const [form, setForm] = useState({
@@ -84,7 +78,7 @@ export default function Signup() {
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      const response = await fetch(apiUrl('/api/auth/register'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
