@@ -4,6 +4,7 @@ import {
   verifyCertificate,
   listCertificates,
   downloadCertificate,
+  getCertificateStats,
 } from '../controllers/certificate.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeAdmin } from '../middleware/auth.middleware.js';
@@ -37,6 +38,10 @@ router.get('/download/:certificateId', downloadCertificate);
 // List all certificates (Admin only)
 // GET /api/cert/list
 router.get('/list', authenticate, authorizeAdmin, listCertificates);
+
+// Dashboard stats (Admin only)
+// GET /api/cert/stats
+router.get('/stats', authenticate, authorizeAdmin, getCertificateStats);
 
 export default router;
 

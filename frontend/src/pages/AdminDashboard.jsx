@@ -11,19 +11,19 @@ import CertificateGenerator from '../components/CertificateGenerator';
 import CertificatePreviewModal from '../components/CertificatePreviewModal';
 import jsQR from 'jsqr';
 
-const stats = [
-  { label: 'Total Certificates', value: 127, change: '+5 from last week' },
-  { label: 'Verifications', value: 342, change: '+18 from last week' },
-  { label: 'Users', value: 56, change: '+3 from last week' },
-  { label: 'Database Size', value: '2.4 GB', change: '+0.3 GB from last month' },
-];
-
+/* ── Static config ──────────────────────────────────────── */
 const tabs = [
   { name: 'Add Certificate/Bill', key: 'add' },
   { name: 'Manage Certificates', key: 'manage' },
   { name: 'Verify Certificate', key: 'verify' },
   { name: 'Analytics', key: 'analytics' },
 ];
+
+const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+const TYPE_ICONS = {
+  marksheet: '📄', hackathon: '💻', sports: '🏆', general: '📜',
+};
 
 // Add this function at the top of your file (or in a utils file and import it)
 async function overlayQROnPhoto(photoUrl, qrUrl) {
@@ -76,6 +76,60 @@ export default function AdminDashboard() {
   const [selectedCertificateType, setSelectedCertificateType] = useState(null);
   const [activityLog, setActivityLog] = useState([]);
   const [previewCert, setPreviewCert] = useState(null);
+
+  /* ── Live stats ─────────────────────────────────────────── */
+  const [dashStats, setDashStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  const fetchStats = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/cert/stats', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) setDashStats(data.data);
+    } catch (e) {
+      console.error('Stats fetch error:', e);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  React.useEffect(() => { fetchStats(); }, []);
+
+  // Build stat cards from live data
+  const statsCards = dashStats ? [
+    {
+      label: 'Total Certificates',
+      value: dashStats.total,
+      icon: '📋',
+      change: dashStats.weekDelta >= 0
+        ? `↑ ${dashStats.weekDelta} this week`
+        : `↓ ${Math.abs(dashStats.weekDelta)} this week`,
+      changeColor: dashStats.weekDelta >= 0 ? 'text-green-600' : 'text-red-500',
+    },
+    {
+      label: 'This Week',
+      value: dashStats.thisWeekCount,
+      icon: '📅',
+      change: `vs ${dashStats.lastWeekCount} last week`,
+      changeColor: 'text-blue-500',
+    },
+    ...dashStats.byType.slice(0, 2).map(t => ({
+      label: `${(TYPE_ICONS[t.type] || '📜')} ${t.type.charAt(0).toUpperCase() + t.type.slice(1)}`,
+      value: t.count,
+      icon: TYPE_ICONS[t.type] || '📜',
+      change: `${((t.count / dashStats.total) * 100).toFixed(0)}% of total`,
+      changeColor: 'text-indigo-500',
+    })),
+  ] : [];
+
+  // Pie chart data from live type breakdown
+  const pieData = dashStats?.byType?.map(t => ({
+    name: t.type.charAt(0).toUpperCase() + t.type.slice(1),
+    value: t.count,
+  })) || [];
 
   // --- Verify Certificate State ---
   const [verifyQuery, setVerifyQuery] = useState('');
@@ -497,13 +551,22 @@ export default function AdminDashboard() {
 
       {/* Stats Cards */}
       <div className="max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8 px-2 sm:px-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="bg-white rounded-lg shadow p-6 flex flex-col w-full">
-            <div className="text-xs text-gray-500 font-medium mb-1">{stat.label}</div>
-            <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-            <div className="text-xs text-green-600 mt-1">{stat.change}</div>
-          </div>
-        ))}
+        {statsLoading
+          ? Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-lg shadow p-6 animate-pulse">
+                <div className="h-3 w-24 bg-gray-200 rounded mb-3" />
+                <div className="h-7 w-16 bg-gray-300 rounded mb-2" />
+                <div className="h-3 w-32 bg-gray-200 rounded" />
+              </div>
+            ))
+          : statsCards.map((stat) => (
+              <div key={stat.label} className="bg-white rounded-lg shadow p-6 flex flex-col w-full">
+                <div className="text-xs text-gray-500 font-medium mb-1">{stat.label}</div>
+                <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+                <div className={`text-xs mt-1 font-medium ${stat.changeColor}`}>{stat.change}</div>
+              </div>
+            ))
+        }
       </div>
 
       {/* Tabs */}
@@ -1096,26 +1159,72 @@ export default function AdminDashboard() {
         {activeTab === 'analytics' && (
           <div className="bg-white rounded-lg shadow p-4 sm:p-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Analytics</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={statsPieData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  fill="#8884d8"
-                  label
-                >
-                  {statsPieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
+
+            {statsLoading ? (
+              <div className="flex items-center justify-center h-64 text-gray-400">Loading analytics...</div>
+            ) : pieData.length === 0 ? (
+              <div className="flex items-center justify-center h-64 text-gray-400">
+                <div className="text-center">
+                  <div className="text-4xl mb-3">📊</div>
+                  <p>No certificate data yet. Generate some certificates to see analytics.</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Summary cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+                  {dashStats?.byType?.map((t, i) => (
+                    <div key={t.type} className="rounded-lg p-4 text-center" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] + '18', border: `1.5px solid ${PIE_COLORS[i % PIE_COLORS.length]}40` }}>
+                      <div className="text-2xl mb-1">{TYPE_ICONS[t.type] || '📜'}</div>
+                      <div className="text-xl font-bold text-gray-900">{t.count}</div>
+                      <div className="text-xs text-gray-500 capitalize">{t.type}</div>
+                    </div>
                   ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+                </div>
+
+                {/* Pie chart */}
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {pieData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${value} certificates`, 'Count']} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+
+                {/* Recent 5 */}
+                {dashStats?.recentCerts?.length > 0 && (
+                  <div className="mt-8">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Recently Issued</h3>
+                    <div className="divide-y">
+                      {dashStats.recentCerts.map(c => (
+                        <div key={c.certificateId} className="flex items-center justify-between py-2.5 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span>{TYPE_ICONS[c.certificateType] || '📜'}</span>
+                            <span className="font-medium text-gray-800">{c.studentName}</span>
+                            <span className="text-gray-400 text-xs capitalize">({c.certificateType})</span>
+                          </div>
+                          <div className="text-gray-400 text-xs">
+                            {new Date(c.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

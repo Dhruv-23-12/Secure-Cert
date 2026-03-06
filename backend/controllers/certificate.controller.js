@@ -2,6 +2,7 @@ import Certificate from '../models/Certificate.js';
 import { generateCertificateHash } from '../utils/hash.util.js';
 import { verifyCertificateHash } from '../utils/hash.util.js';
 import { generateCertificateId } from '../utils/qr.util.js';
+import { computeMarksheetData } from '../utils/marksheet.util.js';
 import QRCode from 'qrcode';
 import nunjucks from 'nunjucks';
 import puppeteer from 'puppeteer';
@@ -79,6 +80,31 @@ export const createCertificate = async (req, res) => {
       certificateId
     );
 
+    // ── Marksheet-specific: compute SPI, backlogs, result status ──────
+    let marksheetData = undefined;
+    let enrichedAdditionalData = { ...additionalData };
+
+    if (certificateType === 'marksheet') {
+      try {
+        const computed = computeMarksheetData(additionalData);
+        marksheetData = {
+          institution:  additionalData.institution  || '',
+          semester:     additionalData.semester     || '',
+          academicYear: additionalData.academicYear || '',
+          examSeatNo:   additionalData.examSeatNo   || '',
+          subjects:     computed.subjects           || [],
+          backlogs:     computed.backlogs           || [],
+          resultStatus: computed.resultStatus       || 'PENDING',
+          performance:  computed.performance        || {},
+        };
+        // Also mirror into additionalData so legacy PDF template still works
+        enrichedAdditionalData = { ...additionalData, ...computed };
+        console.log(`📊 Marksheet SPI: ${computed.performance?.currentSemester?.spi}, Result: ${computed.resultStatus}`);
+      } catch (msErr) {
+        console.warn('⚠️ Marksheet computation warning:', msErr.message);
+      }
+    }
+
     // Create certificate document
     const certificate = await Certificate.create({
       certificateId,
@@ -89,7 +115,8 @@ export const createCertificate = async (req, res) => {
       issueDate: new Date(issueDate),
       status: 'Valid',
       hashValue,
-      additionalData,
+      ...(marksheetData ? { marksheetData } : {}),
+      additionalData: enrichedAdditionalData,
     });
 
     res.status(201).json({
@@ -275,6 +302,70 @@ export const listCertificates = async (req, res) => {
 
 
 /**
+ * Get Dashboard Stats
+ * GET /api/cert/stats
+ * Admin only
+ */
+export const getCertificateStats = async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfThisWeek = new Date(now);
+    startOfThisWeek.setDate(now.getDate() - 7);
+    const startOfLastWeek = new Date(now);
+    startOfLastWeek.setDate(now.getDate() - 14);
+
+    // Total count per type
+    const byType = await Certificate.aggregate([
+      { $group: { _id: '$certificateType', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+
+    const total = byType.reduce((sum, t) => sum + t.count, 0);
+
+    // This week vs last week
+    const thisWeekCount = await Certificate.countDocuments({ createdAt: { $gte: startOfThisWeek } });
+    const lastWeekCount = await Certificate.countDocuments({ createdAt: { $gte: startOfLastWeek, $lt: startOfThisWeek } });
+    const weekDelta = thisWeekCount - lastWeekCount;
+
+    // Certificates per day for the last 30 days (sparkline data)
+    const last30 = new Date(now);
+    last30.setDate(now.getDate() - 30);
+    const dailyCounts = await Certificate.aggregate([
+      { $match: { createdAt: { $gte: last30 } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // Recent activity: last 5 certificates
+    const recentCerts = await Certificate.find({})
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select('certificateId certificateType studentName createdAt');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        total,
+        thisWeekCount,
+        lastWeekCount,
+        weekDelta,
+        byType: byType.map(t => ({ type: t._id, count: t.count })),
+        dailyCounts,
+        recentCerts,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error fetching stats', error: error.message });
+  }
+};
+
+
+/**
  * Download Certificate as PDF
  * GET /api/cert/download/:certificateId
  * Public/Protected (depending on requirement)
@@ -345,36 +436,69 @@ export const downloadCertificate = async (req, res) => {
         data.width = '297mm';
         data.height = '210mm';
         break;
-      case 'marksheet':
+      case 'general': {
+        templateName = 'general.html';
+        const ad = certificate.additionalData || {};
+        data.certTitle        = ad.certTitle        || 'Achievement';
+        data.description      = ad.description      || '';
+        data.issuingAuthority = ad.issuingAuthority || 'P P Savani University';
+        data.authorityTitle   = ad.authorityTitle   || 'Authorized Signatory';
+        data.validUntil       = ad.validUntil       || '';
+        data.reportNo         = certificate.certificateId;
+        data.title            = `Certificate of ${data.certTitle}`;
+        data.orientation      = 'landscape';
+        data.width            = '297mm';
+        data.height           = '210mm';
+        break;
+      }
+
+      case 'marksheet': {
         templateName = 'marksheet.html';
-        data.reportNo = certificate.certificateId;
-        data.date = data.issueDate;
-        data.enrollmentNo = certificate.enrollmentNo;
-        data.semester = certificate.additionalData?.semester || 'N/A';
-        data.academicYear = certificate.additionalData?.academicYear || '2023-2024';
-        data.institution = 'P P SAVANI SCHOOL OF ENGINEERING'; // Example
-        data.course = certificate.course;
-        data.subjects = certificate.additionalData?.subjects || [];
-        // Ensure performance structure exists
-        const perf = certificate.additionalData?.performance || {};
+        // Prefer structured marksheetData, fall back to additionalData
+        const ms = certificate.marksheetData || {};
+        const adMs = certificate.additionalData || {};
+        const perf = ms.performance || adMs.performance || {};
+
+        data.reportNo       = certificate.certificateId;
+        data.date           = data.issueDate;
+        data.enrollmentNo   = certificate.enrollmentNo || adMs.enrollmentNo || '';
+        data.semester       = ms.semester       || adMs.semester       || 'N/A';
+        data.academicYear   = ms.academicYear   || adMs.academicYear   || '';
+        data.institution    = ms.institution    || adMs.institution    || 'P P SAVANI SCHOOL OF ENGINEERING';
+        data.course         = certificate.course || adMs.course        || '';
+        data.examSeatNo     = ms.examSeatNo     || adMs.examSeatNo     || '';
+
+        // Subjects — prefer structured marksheetData.subjects
+        data.subjects = (ms.subjects?.length ? ms.subjects : adMs.subjects) || [];
+
+        // Backlogs
+        data.backlogs = (ms.backlogs?.length ? ms.backlogs : adMs.backlogs) || [];
+
+        // Result status
+        data.resultStatus = ms.resultStatus || adMs.resultStatus || 'PASS';
+
+        // Performance
         data.performance = {
           currentSemester: {
-            registeredCredits: perf.currentSemester?.registeredCredits || 0,
-            earnedCredits: perf.currentSemester?.earnedCredits || 0,
-            sgpa: perf.currentSemester?.sgpa || 0
+            registeredCredits: perf.currentSemester?.registeredCredits ?? 0,
+            earnedCredits:     perf.currentSemester?.earnedCredits     ?? 0,
+            spi:               perf.currentSemester?.spi               ?? perf.currentSemester?.sgpa ?? 0,
+            sgpa:              perf.currentSemester?.spi               ?? perf.currentSemester?.sgpa ?? 0,
           },
           cumulative: {
-            earnedCredits: perf.cumulative?.earnedCredits || 0,
-            cgpa: perf.cumulative?.cgpa || 0,
-            backlogs: perf.cumulative?.backlogs || 0
-          }
+            earnedCredits: perf.cumulative?.earnedCredits ?? 0,
+            cgpa:          perf.cumulative?.cgpa          ?? 0,
+            backlogs:      perf.cumulative?.backlogs      ?? data.backlogs.length,
+          },
         };
-        data.printedOn = new Date().toLocaleString('en-GB');
-        data.title = 'Official Marksheet';
+
+        data.printedOn  = new Date().toLocaleString('en-GB');
+        data.title      = 'Official Marksheet';
         data.orientation = 'portrait';
-        data.width = '210mm';
-        data.height = '297mm';
+        data.width      = '210mm';
+        data.height     = '297mm';
         break;
+      }
       default:
         console.warn(`⚠️ Unknown certificate type: ${typeLower}`);
         return res.status(400).json({

@@ -1,434 +1,426 @@
 import React, { useRef } from 'react';
 import html2canvas from 'html2canvas';
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import QRCode from 'react-qr-code';
 
+/*
+ * Marksheet React Component
+ * Renders the UI-side marksheet for Preview and student-facing view.
+ * Accepts props: studentData, subjects, backlogs, performance, resultStatus
+ */
 export default function Marksheet({
   studentData: propStudentData,
-  subjects: propSubjects,
-  performance: propPerformance
+  subjects:    propSubjects,
+  performance: propPerformance,
+  backlogs:    propBacklogs,
+  resultStatus: propResultStatus,
+  certificateId: propCertId,
+  hashValue:   propHashValue,
 }) {
-  // Print-specific styles
+  /* ── Print styles ──────────────────────────────────────────────── */
   React.useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
       @media print {
-        body * {
-          visibility: hidden;
-        }
-        .marksheet-container, .marksheet-container * {
-          visibility: visible;
-        }
-        .marksheet-container {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 210mm;
-          min-height: 297mm;
-        }
-        .no-print {
-          display: none !important;
-        }
-        nav, footer {
-          display: none !important;
-        }
-        @page {
-          size: A4 portrait;
-          margin: 0;
-        }
+        body * { visibility: hidden; }
+        .marksheet-container, .marksheet-container * { visibility: visible; }
+        .marksheet-container { position: absolute; left: 0; top: 0; width: 210mm; min-height: 297mm; }
+        .no-print { display: none !important; }
+        nav, footer { display: none !important; }
+        @page { size: A4 portrait; margin: 0; }
       }
     `;
     document.head.appendChild(style);
-    return () => {
-      if (document.head.contains(style)) {
-        document.head.removeChild(style);
-      }
-    };
+    return () => { if (document.head.contains(style)) document.head.removeChild(style); };
   }, []);
-  // Sample data - replace with actual data from props or API
+
+  /* ── Data ──────────────────────────────────────────────────────── */
   const studentData = propStudentData || {
-    studentName: 'YADAV DHRUVKUMAR PARESHBHAI',
+    studentName:  'YADAV DHRUVKUMAR PARESHBHAI',
     enrollmentNo: '23SE09CS019',
-    course: 'B.TECH. (COMPUTER SCIENCE & ENGINEERING)',
-    semester: '7',
+    course:       'B.TECH. (COMPUTER SCIENCE & ENGINEERING)',
+    semester:     '7',
     academicYear: 'NOVEMBER 2025',
-    institution: 'SCHOOL OF ENGINEERING',
-    reportNo: '2526RESE00349',
-    date: '05/02/2026',
+    institution:  'SCHOOL OF ENGINEERING',
+    reportNo:     '2526RESE00349',
+    date:         '05/02/2026',
+    examSeatNo:   '',
   };
 
   const subjects = propSubjects || [
-    { code: 'SECE4930', name: 'PROJECT/TRAINING', evaluation: 'PRACTICAL', credits: 18, grade: 'A' },
-    // Add more subjects as needed
+    {
+      code: 'SECE4930',
+      name: 'PROJECT/TRAINING',
+      evaluationComponents: [
+        { componentType: 'Theory',    credits: 9, grade: 'A',  gradePoint: 8 },
+        { componentType: 'Practical', credits: 9, grade: 'A+', gradePoint: 9 },
+      ],
+    },
   ];
 
   const performance = propPerformance || {
-    currentSemester: {
-      registeredCredits: 18,
-      earnedCredits: 18,
-      sgpa: 8.0,
-    },
-    cumulative: {
-      earnedCredits: 118,
-      cgpa: 6.36,
-      backlogs: 0,
-    },
+    currentSemester: { registeredCredits: 18, earnedCredits: 18, spi: 8.0, sgpa: 8.0 },
+    cumulative:      { earnedCredits: 118, cgpa: 6.36, backlogs: 0 },
   };
 
+  const backlogs    = propBacklogs    || [];
+  const resultStatus = propResultStatus || 'PASS';
+  const certId      = propCertId      || studentData.reportNo || '';
+  const hashValue   = propHashValue   || '';
+
+  /* ── Helpers ───────────────────────────────────────────────────── */
+  const FAIL_GRADES = new Set(['FF', 'F', 'II', 'US']);
+  const isFailGrade = (g) => FAIL_GRADES.has((g || '').toUpperCase());
+
+  const resultColor = () => {
+    if (resultStatus === 'PASS')     return '#166534';
+    if (resultStatus === 'ATKT')     return '#d97706';
+    if (resultStatus === 'FAIL')     return '#dc2626';
+    if (resultStatus === 'WITHHELD') return '#7c3aed';
+    return '#6b7280';
+  };
+
+  /* ── PDF Download ──────────────────────────────────────────────── */
   const marksheetRef = useRef(null);
   const [downloading, setDownloading] = React.useState(false);
 
   const handleDownloadPDF = async () => {
     if (!marksheetRef.current) return;
-
     setDownloading(true);
     try {
-      // Capture the marksheet as an image
       const canvas = await html2canvas(marksheetRef.current, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
+        scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff',
       });
-
-      // Convert canvas to image data
-      const imgData = canvas.toDataURL('image/png');
-
-      // Create a new PDF document
-      const pdfDoc = await PDFDocument.create();
-
-      // Calculate dimensions (A4 portrait: 210mm x 297mm)
-      const pdfWidth = 595.28; // A4 width in points (210mm)
-      const pdfHeight = 841.89; // A4 height in points (297mm)
-
-      // Calculate image dimensions to fit A4
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const scaledWidth = imgWidth * ratio;
-      const scaledHeight = imgHeight * ratio;
-
-      // Add a page
-      const page = pdfDoc.addPage([pdfWidth, pdfHeight]);
-
-      // Embed the image
-      const pngImage = await pdfDoc.embedPng(imgData);
-
-      // Center the image on the page
-      const x = (pdfWidth - scaledWidth) / 2;
-      const y = pdfHeight - scaledHeight;
-
+      const imgData   = canvas.toDataURL('image/png');
+      const pdfDoc    = await PDFDocument.create();
+      const pdfW = 595.28, pdfH = 841.89;
+      const ratio     = Math.min(pdfW / canvas.width, pdfH / canvas.height);
+      const scaledW   = canvas.width  * ratio;
+      const scaledH   = canvas.height * ratio;
+      const page      = pdfDoc.addPage([pdfW, pdfH]);
+      const pngImage  = await pdfDoc.embedPng(imgData);
       page.drawImage(pngImage, {
-        x: x,
-        y: y,
-        width: scaledWidth,
-        height: scaledHeight,
+        x: (pdfW - scaledW) / 2,
+        y: pdfH - scaledH,
+        width:  scaledW,
+        height: scaledH,
       });
-
-      // Save the PDF
-      const pdfBytes = await pdfDoc.save();
-
-      // Download the PDF
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `Marksheet_${studentData.enrollmentNo || studentData.studentName || 'Certificate'}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Failed to download marksheet. Please try again.');
+      const pdfBytes  = await pdfDoc.save();
+      const blob      = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url       = URL.createObjectURL(blob);
+      const a         = document.createElement('a');
+      a.href = url;
+      a.download = `marksheet_${studentData.enrollmentNo || 'student'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('PDF download error:', err);
     } finally {
       setDownloading(false);
     }
   };
 
-  const gradePatterns = [
-    { range: '90-100', grade: 'O', point: 10 },
-    { range: '80-89.99', grade: 'A+', point: 9 },
-    { range: '70-79.99', grade: 'A', point: 8 },
-    { range: '60-69.99', grade: 'B+', point: 7 },
-    { range: '50-59.99', grade: 'B', point: 6 },
-    { range: '45-49.99', grade: 'C', point: 5 },
-    { range: '40-44.99', grade: 'P', point: 4 },
-    { range: '0-39.99', grade: 'F', point: 0 },
-  ];
+  /* ── Styles ──────────────────────────────────────────────────────── */
+  const s = {
+    page:         { width: '210mm', minHeight: '297mm', backgroundColor: '#fff', fontFamily: "'Times New Roman', serif", color: '#000', margin: '0 auto' },
+    border:       { border: '4px solid #8B4513', minHeight: 'calc(297mm - 44px)', padding: '16px 18px', display: 'flex', flexDirection: 'column' },
+    header:       { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #8B4513', paddingBottom: '8px', marginBottom: '10px' },
+    uniTitle:     { fontSize: '20px', fontWeight: 'bold', marginBottom: '2px' },
+    uniSub:       { fontSize: '11px', margin: '1px 0' },
+    reportTitle:  { color: '#dc2626', textAlign: 'center', fontSize: '16px', fontWeight: 'bold', margin: '8px 0 10px', textDecoration: 'underline', textTransform: 'uppercase' },
+    infoTable:    { width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginBottom: '8px' },
+    td:           { border: '1px solid #000', padding: '3px 5px' },
+    tdLabel:      { border: '1px solid #000', padding: '3px 5px', fontWeight: 'bold', backgroundColor: '#f3f4f6', width: '18%' },
+    thBlue:       { border: '1px solid #000', padding: '3px 5px', backgroundColor: '#dbeafe', fontWeight: 'bold', textAlign: 'center', fontSize: '10px', textTransform: 'uppercase' },
+    subjectRow:   { backgroundColor: '#f9fafb', fontWeight: 'bold' },
+    componentRow: { backgroundColor: '#fff' },
+    perfBox:      { flex: 1, border: '1px solid #000' },
+    perfHeader:   { backgroundColor: '#dbeafe', textAlign: 'center', padding: '3px', borderBottom: '1px solid #000', fontWeight: 'bold', fontSize: '10px', textTransform: 'uppercase' },
+    perfRow:      { display: 'flex', borderBottom: '1px solid #d1d5db' },
+    perfLabel:    { flex: 2, padding: '2px 4px', borderRight: '1px solid #d1d5db', fontWeight: 'bold', fontSize: '10px' },
+    perfValue:    { flex: 1, padding: '2px 4px', textAlign: 'center', fontSize: '10px' },
+    resultBadge:  { display: 'flex', alignItems: 'center', gap: '10px', border: '2px solid #374151', padding: '4px 10px', margin: '6px 0', borderRadius: '2px' },
+    gradeTable:   { width: '100%', borderCollapse: 'collapse', fontSize: '9px', marginBottom: '4px' },
+    footerRow:    { marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '8px', borderTop: '1px solid #9ca3af' },
+  };
 
+  /* ── Render ─────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4">
-      <div
-        ref={marksheetRef}
-        className="marksheet-container max-w-4xl mx-auto bg-white shadow-lg"
-        style={{ width: '210mm', minHeight: '297mm', padding: '20mm' }}
-      >
-        {/* Header Section */}
-        <div className="border-b-2 border-gray-800 pb-4 mb-6">
-          <div className="flex justify-between items-start mb-4">
-            {/* University Logo Area */}
-            <div className="flex items-center space-x-3">
-              <div className="w-16 h-16 bg-blue-900 rounded flex items-center justify-center">
-                <span className="text-white font-bold text-xl">PPSU</span>
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">P P SAVANI UNIVERSITY</h1>
-                <p className="text-xs text-gray-600">NH 8, GETCO, Near Biltech, Village: Dhamdod Kosamba</p>
-                <p className="text-xs text-gray-600">Dist.: Surat - 394125</p>
-                <p className="text-xs text-blue-600">www.ppsu.ac.in</p>
-              </div>
+    <div>
+      {/* Download button */}
+      <div className="no-print flex gap-3 mb-4 px-2">
+        <button onClick={handleDownloadPDF} disabled={downloading}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-semibold text-sm">
+          {downloading ? 'Generating PDF...' : '⬇ Download PDF'}
+        </button>
+        <button onClick={() => window.print()}
+          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-semibold">
+          🖨 Print
+        </button>
+      </div>
+
+      {/* Marksheet Content */}
+      <div ref={marksheetRef} className="marksheet-container" style={{ padding: '22px 28px', ...s.page }}>
+        <div style={s.border}>
+
+          {/* Header */}
+          <div style={s.header}>
+            <div style={{ width: '14%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="52" height="52" viewBox="0 0 32 32">
+                <path fill="#8B4513" d="M16 2L4 7V14C4 20.732 9.28 27.292 16 30C22.72 27.292 28 20.732 28 14V7L16 2ZM16 27.816C10.424 25.472 6 19.936 6 14V8.2L16 4.2L26 8.2V14C26 19.936 21.576 25.472 16 27.816Z"/>
+                <path fill="#fff" d="M14.2929 19.7071L21.2929 12.7071C21.6834 12.3166 21.6834 11.6834 21.2929 11.2929C20.9024 10.9024 20.2692 10.9024 19.8787 11.2929L13.5858 17.5858L10.7071 14.7071C10.3166 14.3166 9.68342 14.3166 9.29289 14.7071C8.90237 15.0976 8.90237 15.7308 9.29289 16.1213L12.8787 19.7071C13.2692 20.0976 13.9024 20.0976 14.2929 19.7071Z"/>
+              </svg>
             </div>
-            {/* NAAC Badge */}
-            <div className="text-right">
-              <div className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold">
-                NAAC A+ GRADE
-              </div>
+            <div style={{ width: '72%', textAlign: 'center' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '12px', color: '#8B4513' }}>PPSU</div>
+              <div style={s.uniTitle}>P P SAVANI UNIVERSITY</div>
+              <div style={s.uniSub}>NH 8, GETCO, Near Biltech, Village: Dhamdod Kosamba</div>
+              <div style={s.uniSub}>Dist.: Surat – 394125</div>
+              <div style={{ ...s.uniSub, color: '#0000FF' }}>www.ppsu.ac.in</div>
+            </div>
+            <div style={{ width: '14%', textAlign: 'right' }}>
+              <span style={{ backgroundColor: '#dc2626', color: '#fff', fontWeight: 'bold', padding: '3px 7px', fontSize: '9px', borderRadius: '4px' }}>NAAC A+ GRADE</span>
             </div>
           </div>
+
           {/* Title */}
-          <h2 className="text-2xl font-bold text-red-600 text-center mt-4">
-            OFFICIAL MARKSHEET
-          </h2>
-        </div>
+          <div style={s.reportTitle}>OFFICIAL MARKSHEET</div>
 
-        {/* Report Details */}
-        <div className="mb-6">
-          <div className="flex justify-between text-sm mb-4">
-            <div><strong>Date:</strong> {studentData.date}</div>
-            <div><strong>Report No.:</strong> {studentData.reportNo}</div>
+          {/* Date/Report Row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>
+            <span>Date: {studentData.date || new Date().toLocaleDateString('en-GB')}</span>
+            <span>Report No.: {studentData.reportNo || certId}</span>
           </div>
 
-          {/* Student Information Table */}
-          <div className="border border-gray-800 mb-4">
-            <table className="w-full text-sm">
-              <tbody>
-                <tr className="border-b border-gray-800">
-                  <td className="border-r border-gray-800 px-3 py-2 bg-gray-50 font-semibold w-1/3">NAME OF STUDENT</td>
-                  <td className="px-3 py-2">{studentData.studentName}</td>
-                </tr>
-                <tr className="border-b border-gray-800">
-                  <td className="border-r border-gray-800 px-3 py-2 bg-gray-50 font-semibold">ENROLLMENT NO.</td>
-                  <td className="px-3 py-2">{studentData.enrollmentNo}</td>
-                </tr>
-                <tr className="border-b border-gray-800">
-                  <td className="border-r border-gray-800 px-3 py-2 bg-gray-50 font-semibold">SEMESTER</td>
-                  <td className="px-3 py-2">{studentData.semester}</td>
-                </tr>
-                <tr>
-                  <td className="border-r border-gray-800 px-3 py-2 bg-gray-50 font-semibold">MONTH-YEAR</td>
-                  <td className="px-3 py-2">{studentData.academicYear}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          {/* Student Info Table */}
+          <table style={s.infoTable}>
+            <tbody>
+              <tr>
+                <td style={s.tdLabel}>NAME OF STUDENT</td>
+                <td style={{ ...s.td, fontWeight: 'bold' }} colSpan={3}>{studentData.studentName}</td>
+              </tr>
+              <tr>
+                <td style={s.tdLabel}>ENROLLMENT NO.</td>
+                <td style={{ ...s.td, width: '32%' }}>{studentData.enrollmentNo}</td>
+                <td style={s.tdLabel}>EXAM SEAT NO.</td>
+                <td style={s.td}>{studentData.examSeatNo || '—'}</td>
+              </tr>
+              <tr>
+                <td style={s.tdLabel}>SEMESTER</td>
+                <td style={s.td}>{studentData.semester}</td>
+                <td style={s.tdLabel}>MONTH-YEAR</td>
+                <td style={s.td}>{studentData.academicYear}</td>
+              </tr>
+              <tr>
+                <td style={s.tdLabel}>INSTITUTION</td>
+                <td style={s.td} colSpan={3}>{studentData.institution}</td>
+              </tr>
+              <tr>
+                <td style={s.tdLabel}>PROGRAMME</td>
+                <td style={s.td} colSpan={3}>{studentData.course}</td>
+              </tr>
+            </tbody>
+          </table>
 
-          {/* Academic Program Information */}
-          <div className="border border-gray-800 mb-4">
-            <table className="w-full text-sm">
-              <tbody>
-                <tr className="border-b border-gray-800">
-                  <td className="border-r border-gray-800 px-3 py-2 bg-gray-50 font-semibold w-1/3">INSTITUTION</td>
-                  <td className="px-3 py-2">{studentData.institution}</td>
-                </tr>
-                <tr>
-                  <td className="border-r border-gray-800 px-3 py-2 bg-gray-50 font-semibold">PROGRAMME</td>
-                  <td className="px-3 py-2">{studentData.course}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Course Performance Table */}
-        <div className="mb-6">
-          <table className="w-full border border-gray-800 text-sm">
+          {/* Course Performance Table */}
+          <table style={{ ...s.infoTable, marginBottom: '10px' }}>
             <thead>
-              <tr className="bg-gray-100 border-b-2 border-gray-800">
-                <th className="border-r border-gray-800 px-3 py-2 text-left font-semibold">COURSE CODE</th>
-                <th className="border-r border-gray-800 px-3 py-2 text-left font-semibold">COURSE NAME</th>
-                <th className="border-r border-gray-800 px-3 py-2 text-left font-semibold">EVALUATION</th>
-                <th className="border-r border-gray-800 px-3 py-2 text-center font-semibold">CREDITS</th>
-                <th className="px-3 py-2 text-center font-semibold">GRADE</th>
+              <tr>
+                <th style={{ ...s.thBlue, width: '13%' }}>Course Code</th>
+                <th style={{ ...s.thBlue, width: '38%' }}>Course Name / Component</th>
+                <th style={{ ...s.thBlue, width: '13%' }}>Evaluation</th>
+                <th style={{ ...s.thBlue, width: '9%' }}>Credits</th>
+                <th style={{ ...s.thBlue, width: '9%' }}>Grade</th>
+                <th style={{ ...s.thBlue, width: '9%' }}>Pts</th>
+                <th style={{ ...s.thBlue, width: '9%' }}>Result</th>
               </tr>
             </thead>
             <tbody>
-              {subjects.map((subject, index) => (
-                <tr key={index} className="border-b border-gray-300">
-                  <td className="border-r border-gray-300 px-3 py-2">{subject.code}</td>
-                  <td className="border-r border-gray-300 px-3 py-2">{subject.name}</td>
-                  <td className="border-r border-gray-300 px-3 py-2">{subject.evaluation}</td>
-                  <td className="border-r border-gray-300 px-3 py-2 text-center">{subject.credits}</td>
-                  <td className="px-3 py-2 text-center font-semibold">{subject.grade}</td>
-                </tr>
-              ))}
-              {/* Empty rows for additional subjects */}
-              {Array.from({ length: Math.max(0, 6 - subjects.length) }).map((_, index) => (
-                <tr key={`empty-${index}`} className="border-b border-gray-300">
-                  <td className="border-r border-gray-300 px-3 py-2 h-8"></td>
-                  <td className="border-r border-gray-300 px-3 py-2"></td>
-                  <td className="border-r border-gray-300 px-3 py-2"></td>
-                  <td className="border-r border-gray-300 px-3 py-2"></td>
-                  <td className="px-3 py-2"></td>
-                </tr>
+              {subjects.map((sub, si) => {
+                const comps = sub.evaluationComponents || [];
+                if (comps.length > 0) {
+                  return (
+                    <React.Fragment key={si}>
+                      <tr style={s.subjectRow}>
+                        <td style={{ ...s.td, fontSize: '10px' }}>{sub.code}</td>
+                        <td style={{ ...s.td, fontSize: '10px' }} colSpan={6}>{sub.name}</td>
+                      </tr>
+                      {comps.map((comp, ci) => {
+                        const fail = comp.gradePoint === 0 || isFailGrade(comp.grade);
+                        return (
+                          <tr key={ci} style={s.componentRow}>
+                            <td style={{ ...s.td, fontSize: '10px' }}></td>
+                            <td style={{ ...s.td, fontSize: '10px', paddingLeft: '20px', fontStyle: 'italic', color: '#374151' }}>↳ {comp.componentType}</td>
+                            <td style={{ ...s.td, fontSize: '10px', textAlign: 'center' }}>{comp.componentType}</td>
+                            <td style={{ ...s.td, fontSize: '10px', textAlign: 'center' }}>{comp.credits}</td>
+                            <td style={{ ...s.td, fontSize: '10px', textAlign: 'center', fontWeight: 'bold', color: fail ? '#dc2626' : '#166534' }}>{comp.grade}</td>
+                            <td style={{ ...s.td, fontSize: '10px', textAlign: 'center' }}>{comp.gradePoint ?? '—'}</td>
+                            <td style={{ ...s.td, fontSize: '9px', textAlign: 'center', color: fail ? '#dc2626' : '#166534' }}>{fail ? 'FAIL' : 'PASS'}</td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                }
+                // Legacy flat subject
+                const failFlat = isFailGrade(sub.grade);
+                return (
+                  <tr key={si}>
+                    <td style={{ ...s.td, fontSize: '10px' }}>{sub.code}</td>
+                    <td style={{ ...s.td, fontSize: '10px' }}>{sub.name}</td>
+                    <td style={{ ...s.td, fontSize: '10px', textAlign: 'center' }}>{sub.evaluation}</td>
+                    <td style={{ ...s.td, fontSize: '10px', textAlign: 'center' }}>{sub.credits}</td>
+                    <td style={{ ...s.td, fontSize: '10px', textAlign: 'center', fontWeight: 'bold', color: failFlat ? '#dc2626' : '#166534' }}>{sub.grade}</td>
+                    <td style={{ ...s.td, fontSize: '10px', textAlign: 'center' }}>{sub.gradePoint ?? '—'}</td>
+                    <td style={{ ...s.td, fontSize: '9px', textAlign: 'center', color: failFlat ? '#dc2626' : '#166534' }}>{failFlat ? 'FAIL' : 'PASS'}</td>
+                  </tr>
+                );
+              })}
+              {/* Padding rows */}
+              {subjects.length < 4 && Array.from({ length: 4 - subjects.length }).map((_, i) => (
+                <tr key={`pad-${i}`}><td style={{ ...s.td, height: '18px' }} colSpan={7}>&nbsp;</td></tr>
               ))}
             </tbody>
           </table>
-        </div>
 
-        {/* Performance Summary */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          {/* Current Semester Performance */}
-          <div className="border border-gray-800">
-            <div className="bg-gray-100 border-b border-gray-800 px-3 py-2 font-semibold text-center">
-              CURRENT SEMESTER PERFORMANCE
+          {/* Performance Summary */}
+          <div style={{ display: 'flex', gap: '14px', marginBottom: '10px' }}>
+            <div style={s.perfBox}>
+              <div style={s.perfHeader}>Current Semester Performance</div>
+              {[
+                ['REGISTERED CREDITS', performance.currentSemester?.registeredCredits ?? '—'],
+                ['EARNED CREDITS',     performance.currentSemester?.earnedCredits     ?? '—'],
+                ['SPI / SGPA',         (performance.currentSemester?.spi ?? performance.currentSemester?.sgpa ?? '—')],
+              ].map(([l, v], i) => (
+                <div key={i} style={{ ...s.perfRow, ...(i === 2 ? { borderBottom: 'none' } : {}) }}>
+                  <div style={s.perfLabel}>{l}</div>
+                  <div style={{ ...s.perfValue, fontWeight: i === 2 ? 'bold' : 'normal' }}>{v}</div>
+                </div>
+              ))}
             </div>
-            <table className="w-full text-sm">
-              <tbody>
-                <tr className="border-b border-gray-300">
-                  <td className="border-r border-gray-300 px-3 py-2 bg-gray-50 font-semibold">REGISTERED CREDITS</td>
-                  <td className="px-3 py-2 text-center">{performance.currentSemester.registeredCredits}</td>
-                </tr>
-                <tr className="border-b border-gray-300">
-                  <td className="border-r border-gray-300 px-3 py-2 bg-gray-50 font-semibold">EARNED CREDITS</td>
-                  <td className="px-3 py-2 text-center">{performance.currentSemester.earnedCredits}</td>
-                </tr>
-                <tr>
-                  <td className="border-r border-gray-300 px-3 py-2 bg-gray-50 font-semibold">SGPA</td>
-                  <td className="px-3 py-2 text-center font-bold">{performance.currentSemester.sgpa.toFixed(2)}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div style={s.perfBox}>
+              <div style={s.perfHeader}>Cumulative Performance</div>
+              {[
+                ['EARNED CREDITS', performance.cumulative?.earnedCredits ?? '—'],
+                ['CGPA / CPI',     performance.cumulative?.cgpa          ?? '—'],
+                ['NO. OF BACKLOGS',performance.cumulative?.backlogs      ?? 0],
+              ].map(([l, v], i) => (
+                <div key={i} style={{ ...s.perfRow, ...(i === 2 ? { borderBottom: 'none' } : {}) }}>
+                  <div style={s.perfLabel}>{l}</div>
+                  <div style={{ ...s.perfValue, fontWeight: i === 1 ? 'bold' : 'normal' }}>{v}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* Cumulative Performance */}
-          <div className="border border-gray-800">
-            <div className="bg-gray-100 border-b border-gray-800 px-3 py-2 font-semibold text-center">
-              CUMULATIVE PERFORMANCE
+          {/* Backlogs */}
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontWeight: 'bold', fontSize: '10px', color: '#dc2626', textTransform: 'uppercase', marginBottom: '3px' }}>
+              {backlogs.length > 0 ? `⚠ Backlogs (${backlogs.length})` : 'Backlogs'}
             </div>
-            <table className="w-full text-sm">
-              <tbody>
-                <tr className="border-b border-gray-300">
-                  <td className="border-r border-gray-300 px-3 py-2 bg-gray-50 font-semibold">EARNED CREDITS</td>
-                  <td className="px-3 py-2 text-center">{performance.cumulative.earnedCredits}</td>
-                </tr>
-                <tr className="border-b border-gray-300">
-                  <td className="border-r border-gray-300 px-3 py-2 bg-gray-50 font-semibold">CGPA</td>
-                  <td className="px-3 py-2 text-center font-bold">{performance.cumulative.cgpa.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td className="border-r border-gray-300 px-3 py-2 bg-gray-50 font-semibold">NO. OF BACKLOGS</td>
-                  <td className="px-3 py-2 text-center">{performance.cumulative.backlogs}</td>
-                </tr>
-              </tbody>
-            </table>
+            {backlogs.length > 0 ? (
+              <table style={{ ...s.gradeTable, border: '1px solid #000' }}>
+                <thead>
+                  <tr>
+                    {['Course Code', 'Subject Name', 'Component', 'Grade', 'Status'].map(h => (
+                      <th key={h} style={{ ...s.td, backgroundColor: '#fee2e2', fontSize: '9px', textAlign: 'left' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {backlogs.map((bl, i) => (
+                    <tr key={i}>
+                      <td style={{ ...s.td, fontSize: '9px' }}>{bl.courseCode}</td>
+                      <td style={{ ...s.td, fontSize: '9px' }}>{bl.subjectName}</td>
+                      <td style={{ ...s.td, fontSize: '9px' }}>{bl.componentType}</td>
+                      <td style={{ ...s.td, fontSize: '9px', color: '#dc2626', fontWeight: 'bold' }}>{bl.grade}</td>
+                      <td style={{ ...s.td, fontSize: '9px' }}>{(bl.status || 'ACTIVE').toUpperCase()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ fontSize: '10px', color: '#166534', fontStyle: 'italic' }}>✓ No Backlogs</div>
+            )}
           </div>
-        </div>
 
-        {/* Final Result */}
-        <div className="border-2 border-gray-800 mb-6 p-4 text-center">
-          <div className="text-lg font-bold mb-2">FINAL RESULT</div>
-          <div className="text-xl font-bold text-blue-900">PASSED</div>
-        </div>
+          {/* Result Status */}
+          <div style={s.resultBadge}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold' }}>FINAL RESULT:</span>
+            <span style={{ fontSize: '14px', fontWeight: 'bold', color: resultColor() }}>
+              {resultStatus || 'PASS'}
+              {resultStatus === 'ATKT' && ' (Allowed To Keep Term)'}
+            </span>
+          </div>
 
-        {/* Grade Patterns */}
-        <div className="mb-6">
-          <div className="text-sm font-semibold mb-2 text-center">--GRADE PATTERNS:--</div>
-          <table className="w-full border border-gray-800 text-xs">
+          {/* Grade Patterns */}
+          <div style={{ fontSize: '9px', fontWeight: 'bold', textAlign: 'center', marginBottom: '2px' }}>—: GRADE PATTERNS :—</div>
+          <table style={s.gradeTable}>
             <thead>
-              <tr className="bg-gray-100 border-b border-gray-800">
-                <th className="border-r border-gray-800 px-2 py-1 text-left">%MARKS RANGE</th>
-                <th className="border-r border-gray-800 px-2 py-1 text-center">GRADE</th>
-                <th className="px-2 py-1 text-center">GRADE POINT</th>
+              <tr>
+                {['% Marks Range','90–100','80–89.99','70–79.99','60–69.99','50–59.99','45–49.99','40–44.99','0–39.99'].map(h => (
+                  <th key={h} style={{ border: '1px solid #000', padding: '2px 3px', backgroundColor: '#f3f4f6', textAlign: 'center' }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {gradePatterns.map((pattern, index) => (
-                <tr key={index} className="border-b border-gray-300">
-                  <td className="border-r border-gray-300 px-2 py-1">{pattern.range}</td>
-                  <td className="border-r border-gray-300 px-2 py-1 text-center font-semibold">{pattern.grade}</td>
-                  <td className="px-2 py-1 text-center">{pattern.point}</td>
-                </tr>
-              ))}
+              <tr>
+                <td style={{ border: '1px solid #000', padding: '2px 3px', fontWeight: 'bold', textAlign: 'center' }}>GRADE</td>
+                {['O','A+','A','B+','B','C','P','F'].map(g => (
+                  <td key={g} style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center' }}>{g}</td>
+                ))}
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #000', padding: '2px 3px', fontWeight: 'bold', textAlign: 'center' }}>GRADE POINTS</td>
+                {['10','9','8','7','6','5','4','0'].map(g => (
+                  <td key={g} style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center' }}>{g}</td>
+                ))}
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #000', padding: '2px 3px', fontWeight: 'bold', textAlign: 'center' }}>GTU GRADE</td>
+                {['AA','AB','BB','BC','CC','CD','DD','FF/II'].map(g => (
+                  <td key={g} style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center' }}>{g}</td>
+                ))}
+              </tr>
             </tbody>
           </table>
-          <p className="text-xs text-gray-600 mt-2">*S - Satisfactory, US - Unsatisfactory</p>
-        </div>
+          <div style={{ fontSize: '8px', textAlign: 'center', fontStyle: 'italic', marginBottom: '8px' }}>
+            *S = Satisfactory, US = Unsatisfactory &nbsp;|&nbsp; SPI = Σ(Credits × Grade Points) / Σ(Credits)
+          </div>
 
-        {/* Footer Section */}
-        <div className="mt-8 border-t-2 border-gray-800 pt-4">
-          <div className="flex justify-between items-end">
-            {/* QR Code */}
-            <div className="flex flex-col items-center">
-              <div className="border-2 border-gray-400 p-1 bg-white mb-2">
-                <QRCode
-                  value={
-                    // Priority: Explicit QR Value > Hash Value > Report No > Fallback
-                    (studentData.qrValue || studentData.hashValue || studentData.reportNo || 'https://ppsu.ac.in')
-                  }
-                  size={96}
-                  level="M"
-                />
-              </div>
+          {/* Footer */}
+          <div style={s.footerRow}>
+            <div style={{ textAlign: 'center' }}>
+              {certId && certId !== 'PREVIEW' && hashValue ? (
+                <QRCode value={hashValue || certId} size={64} />
+              ) : (
+                <div style={{ width: 64, height: 64, border: '1px solid #ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '8px', color: '#aaa' }}>QR</div>
+              )}
+              <div style={{ fontSize: '8px', marginTop: '2px' }}>Scan to Verify</div>
             </div>
 
-            {/* Signature and Seal Area */}
-            <div className="flex flex-col items-center space-y-4">
-              <div className="text-center">
-                <div className="border-t-2 border-gray-800 w-48 mt-2 mb-1"></div>
-                <p className="text-xs font-semibold">REGISTRAR</p>
-                <p className="text-xs">P P SAVANI UNIVERSITY</p>
-              </div>
-              <div className="w-32 h-32 border-2 border-dashed border-gray-400 flex items-center justify-center bg-gray-50">
-                <span className="text-xs text-gray-400 text-center">OFFICIAL<br />SEAL</span>
-              </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ height: '36px' }}></div>
+              <div style={{ borderTop: '1px solid #374151', width: '160px', marginBottom: '3px' }}></div>
+              <div style={{ fontWeight: 'bold', fontSize: '10px' }}>CONTROLLER OF EXAMINATIONS</div>
+              <div style={{ fontSize: '10px' }}>P P SAVANI UNIVERSITY</div>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ height: '36px' }}></div>
+              <div style={{ borderTop: '1px solid #374151', width: '140px', marginBottom: '3px' }}></div>
+              <div style={{ fontWeight: 'bold', fontSize: '10px' }}>REGISTRAR</div>
+              <div style={{ fontSize: '10px' }}>P P SAVANI UNIVERSITY</div>
             </div>
           </div>
 
           {/* Disclaimer */}
-          <div className="mt-6 text-xs text-gray-600 text-center border-t border-gray-300 pt-3">
-            <p className="mb-1">
-              This is a computer generated report, signature is not required. In case of discrepancy office results will be considered as final.
-            </p>
-            <p>
-              Printed on: {studentData.date}, Time: {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}
-            </p>
+          <div style={{ fontSize: '8px', marginTop: '4px', borderTop: '1px solid #d1d5db', paddingTop: '3px' }}>
+            This is a computer-generated marksheet; signature is not required. In case of discrepancy, office records will be considered final.
+            Verify authenticity by scanning the QR code above.
           </div>
-        </div>
-      </div>
 
-      {/* Print and Download Buttons */}
-      <div className="no-print max-w-4xl mx-auto mt-4 text-center flex justify-center gap-4">
-        <button
-          onClick={handleDownloadPDF}
-          disabled={downloading}
-          className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {downloading ? (
-            <>
-              <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-              </svg>
-              Downloading...
-            </>
-          ) : (
-            <>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download PDF
-            </>
-          )}
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-          </svg>
-          Print Marksheet
-        </button>
+        </div>
       </div>
     </div>
   );

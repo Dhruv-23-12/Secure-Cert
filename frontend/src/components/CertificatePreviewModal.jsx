@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf';
 import HackathonCertificate from '../pages/HackathonCertificate';
 import SportsCertificate from '../pages/SportsCertificate';
 import Marksheet from '../pages/Marksheet';
+import GeneralCertificate from '../pages/GeneralCertificate';
 
 export default function CertificatePreviewModal({ certificateData, onClose }) {
     const certificateRef = useRef(null);
@@ -22,34 +23,74 @@ export default function CertificatePreviewModal({ certificateData, onClose }) {
     const renderCertificate = () => {
         const { certificateType, additionalData, certificateId, hashValue, studentName, issueDate } = certificateData;
 
-        // Merge top-level data with additionalData for the component props
-        const props = {
-            ...additionalData,
-            studentName: studentName || additionalData?.studentName,
-            certificateId: certificateId || 'PREVIEW',
-            qrValue: hashValue || certificateId || 'PREVIEW',
-            date: issueDate
-        };
-
         switch (certificateType) {
             case 'hackathon':
-                return <HackathonCertificate {...props} />;
+                return <HackathonCertificate
+                    {...additionalData}
+                    studentName={studentName || additionalData?.studentName}
+                    certificateId={certificateId || 'PREVIEW'}
+                    qrValue={hashValue || certificateId || 'PREVIEW'}
+                    date={issueDate}
+                />;
             case 'sports':
-                return <SportsCertificate {...props} />;
-            case 'marksheet':
+                return <SportsCertificate
+                    {...additionalData}
+                    studentName={studentName || additionalData?.studentName}
+                    certificateId={certificateId || 'PREVIEW'}
+                    qrValue={hashValue || certificateId || 'PREVIEW'}
+                    date={issueDate}
+                />;
+            case 'marksheet': {
+                const ad = additionalData || {};
                 return (
                     <Marksheet
                         studentData={{
-                            ...props,
-                            reportNo: props.certificateId,
-                            date: new Date(props.date || Date.now()).toLocaleDateString()
+                            studentName:  studentName || ad.studentName,
+                            enrollmentNo: ad.enrollmentNo || '',
+                            course:       ad.course || '',
+                            semester:     ad.semester || '',
+                            academicYear: ad.academicYear || '',
+                            institution:  ad.institution || '',
+                            examSeatNo:   ad.examSeatNo  || '',
+                            reportNo:     certificateId  || 'PREVIEW',
+                            date:         new Date(issueDate || Date.now()).toLocaleDateString('en-GB'),
                         }}
+                        subjects={ad.subjects || []}
+                        backlogs={ad.backlogs || []}
+                        resultStatus={ad.resultStatus || 'PASS'}
+                        performance={ad.performance || {
+                            currentSemester: { registeredCredits: 0, earnedCredits: 0, spi: 0 },
+                            cumulative:      { earnedCredits: 0, cgpa: 0, backlogs: 0 },
+                        }}
+                        certificateId={certificateId || 'PREVIEW'}
+                        hashValue={hashValue || ''}
                     />
                 );
+            }
+            case 'general': {
+                const ad = additionalData || {};
+                return (
+                    <GeneralCertificate
+                        studentName={studentName || ad.studentName}
+                        certTitle={ad.certTitle || 'Achievement'}
+                        description={ad.description || ''}
+                        issuingAuthority={ad.issuingAuthority || 'P P Savani University'}
+                        authorityTitle={ad.authorityTitle || 'Authorized Signatory'}
+                        issueDate={issueDate}
+                        validUntil={ad.validUntil || ''}
+                        certificateId={certificateId || 'PREVIEW'}
+                        hashValue={hashValue || ''}
+                    />
+                );
+            }
             default:
                 return <div className="p-10 text-center">Unknown Certificate Type</div>;
         }
     };
+
+    // Portrait (A4 210mm) for marksheets, landscape for others
+    const isMarksheet = certificateData?.certificateType === 'marksheet';
+
 
     const handleDownloadPDF = async () => {
         // If it's a preview/draft (no real ID), use client-side generation
@@ -143,12 +184,17 @@ export default function CertificatePreviewModal({ certificateData, onClose }) {
                 {/* Content - Scrollable */}
                 <div className="flex-1 overflow-auto bg-gray-100 p-4 sm:p-8 flex justify-center items-start">
                     {/* Wrapper to constrain width for preview but allow capture */}
-                    <div className="shadow-lg transform bg-white" style={{ width: '297mm', minHeight: '210mm', position: 'relative' }}>
+                    <div className="shadow-lg transform bg-white" style={{
+                        width: isMarksheet ? '210mm' : '297mm',
+                        minHeight: isMarksheet ? '297mm' : '210mm',
+                        position: 'relative'
+                    }}>
                         <div ref={certificateRef} className="w-full h-full absolute inset-0">
                             {renderCertificate()}
                         </div>
                     </div>
                 </div>
+
 
                 {/* Footer - Actions */}
                 <div className="p-4 border-t bg-gray-50 flex justify-end gap-3 shrink-0">
