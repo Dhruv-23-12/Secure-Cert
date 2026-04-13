@@ -7,6 +7,9 @@ import { issueOtpForEmail, verifyOtpByEmail } from './otp.controller.js';
  * Helper function to create JWT token for authenticated user
  */
 const generateToken = (userId) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is not configured');
+  }
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '7d',
   });
@@ -45,8 +48,13 @@ export const register = async (req, res) => {
       role: role || 'user', // Default to 'user' if not specified
     });
 
-    // Generate JWT token
-    const token = generateToken(user._id);
+    // Token on register is optional (login flow uses OTP + token issuance later)
+    let token = null;
+    try {
+      token = generateToken(user._id);
+    } catch (tokenError) {
+      console.warn('JWT token skipped during register:', tokenError.message);
+    }
 
     // Return user data (without password) and token
     res.status(201).json({
@@ -58,7 +66,7 @@ export const register = async (req, res) => {
           email: user.email,
           role: user.role,
         },
-        token,
+        ...(token ? { token } : {}),
       },
     });
   } catch (error) {
