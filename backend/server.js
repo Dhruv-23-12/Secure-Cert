@@ -20,15 +20,13 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
-const fixedAllowedOrigins = ['https://hashverify.vercel.app'];
 const localhostOrigins = ['http://localhost:5173', 'http://localhost:3000'];
 const allowLocalhostCors =
   process.env.NODE_ENV !== 'production' || process.env.ALLOW_LOCALHOST_CORS === 'true';
-const allowVercelPreview = process.env.ALLOW_VERCEL_PREVIEW_CORS !== 'false';
+const allowVercelPreview = process.env.ALLOW_VERCEL_PREVIEW_CORS === 'true';
 
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
-  if (fixedAllowedOrigins.includes(origin)) return true;
   if (allowedOrigins.includes(origin)) return true;
   if (allowLocalhostCors && localhostOrigins.includes(origin)) return true;
   if (allowVercelPreview && /^https:\/\/.*\.vercel\.app$/.test(origin)) return true;

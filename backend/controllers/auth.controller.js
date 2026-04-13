@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { issueOtpForEmail, verifyOtpByEmail } from './otp.controller.js';
-import { sendOtpEmail } from '../services/email/resend.service.js';
+import { sendOtpEmail } from '../services/email/index.js';
 
 /**
  * Generate JWT Token
@@ -133,7 +133,7 @@ export const login = async (req, res) => {
           expiresInMinutes: issued.expiresInMinutes,
         });
       } catch (err) {
-        console.error('Resend OTP delivery failed:', err?.message);
+        console.error('OTP delivery failed:', err?.message);
       }
     });
 

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import OTP from '../models/otp.model.js';
 import User from '../models/User.js';
-import { sendOtpEmail } from '../services/email/resend.service.js';
+import { sendOtpEmail } from '../services/email/index.js';
 
 const OTP_LENGTH = 6;
 const OTP_EXPIRY_MINUTES = 5;
@@ -90,7 +90,7 @@ export const sendOtp = async (req, res) => {
       try {
         await sendOtpEmail({ to: email, otp, expiresInMinutes });
       } catch (err) {
-        console.error('Resend OTP delivery failed:', err?.message);
+        console.error('OTP delivery failed:', err?.message);
       }
     });
 
