@@ -9,7 +9,7 @@ const otpSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
-    otp: {
+    otpHash: {
       type: String,
       required: true,
       select: false,

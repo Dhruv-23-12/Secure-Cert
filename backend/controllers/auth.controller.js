@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { issueOtpForEmail, verifyOtpByEmail } from './otp.controller.js';
+import { sendOtpEmail } from '../services/email/resend.service.js';
 
 /**
  * Generate JWT Token
@@ -113,19 +114,33 @@ export const login = async (req, res) => {
     }
 
     // Enforce OTP step for all users after password verification
+    let issued;
     try {
-      await issueOtpForEmail(user.email);
+      issued = await issueOtpForEmail(user.email);
     } catch (otpError) {
-      return res.status(otpError.statusCode || 503).json({
+      return res.status(otpError.statusCode || 429).json({
         success: false,
-        message: otpError.message || 'Unable to send OTP at the moment',
+        message: otpError.message || 'Unable to issue OTP at the moment',
       });
     }
+
+    // Async (non-blocking) OTP delivery via Resend (retry once handled inside service)
+    queueMicrotask(async () => {
+      try {
+        await sendOtpEmail({
+          to: issued.email,
+          otp: issued.otp,
+          expiresInMinutes: issued.expiresInMinutes,
+        });
+      } catch (err) {
+        console.error('Resend OTP delivery failed:', err?.message);
+      }
+    });
 
     // Return response indicating 2FA required
     res.status(200).json({
       success: true,
-      message: 'OTP sent to email',
+      message: 'OTP queued for delivery',
       require2FA: true,
       userId: user._id,
       email: user.email

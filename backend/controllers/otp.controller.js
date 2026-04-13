@@ -1,8 +1,7 @@
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import OTP from '../models/otp.model.js';
 import User from '../models/User.js';
-import { sendOtpEmail } from '../services/mail.service.js';
+import { sendOtpEmail } from '../services/email/resend.service.js';
 
 const OTP_LENGTH = 6;
 const OTP_EXPIRY_MINUTES = 5;
@@ -12,6 +11,24 @@ const MAX_VERIFY_ATTEMPTS = 5;
 
 const normalizeEmail = (email = '') => email.toLowerCase().trim();
 const generateOtp = () => crypto.randomInt(0, 10 ** OTP_LENGTH).toString().padStart(OTP_LENGTH, '0');
+
+const otpPepper = () => process.env.OTP_PEPPER || '';
+const hashOtp = (otp) =>
+  crypto
+    .createHash('sha256')
+    .update(`${String(otp).trim()}${otpPepper()}`)
+    .digest('hex');
+
+const safeEqualHex = (a, b) => {
+  try {
+    const ab = Buffer.from(String(a || ''), 'hex');
+    const bb = Buffer.from(String(b || ''), 'hex');
+    if (ab.length !== bb.length) return false;
+    return crypto.timingSafeEqual(ab, bb);
+  } catch {
+    return false;
+  }
+};
 
 const getRemainingCooldownSeconds = (lastSentAt) => {
   if (!lastSentAt) return 0;
@@ -32,11 +49,11 @@ export const issueOtpForEmail = async (email) => {
   }
 
   const otp = generateOtp();
-  const hashedOtp = await bcrypt.hash(otp, 12);
+  const otpHash = hashOtp(otp);
   const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MS);
 
   if (existingOtp) {
-    existingOtp.otp = hashedOtp;
+    existingOtp.otpHash = otpHash;
     existingOtp.expiresAt = expiresAt;
     existingOtp.attempts = 0;
     existingOtp.lastSentAt = now;
@@ -44,14 +61,14 @@ export const issueOtpForEmail = async (email) => {
   } else {
     await OTP.create({
       email: normalizedEmail,
-      otp: hashedOtp,
+      otpHash,
       expiresAt,
       attempts: 0,
       lastSentAt: now,
     });
   }
 
-  await sendOtpEmail({ to: normalizedEmail, otp, expiresInMinutes: OTP_EXPIRY_MINUTES });
+  return { email: normalizedEmail, otp, expiresInMinutes: OTP_EXPIRY_MINUTES };
 };
 
 export const sendOtp = async (req, res) => {
@@ -66,11 +83,21 @@ export const sendOtp = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Account not found' });
     }
 
-    await issueOtpForEmail(email);
-    return res.status(200).json({
+    const { otp, expiresInMinutes } = await issueOtpForEmail(email);
+
+    // Async (non-blocking) delivery
+    queueMicrotask(async () => {
+      try {
+        await sendOtpEmail({ to: email, otp, expiresInMinutes });
+      } catch (err) {
+        console.error('Resend OTP delivery failed:', err?.message);
+      }
+    });
+
+    return res.status(202).json({
       success: true,
-      message: 'OTP sent successfully',
-      data: { email, expiresInSeconds: OTP_EXPIRY_MINUTES * 60 },
+      message: 'OTP queued for delivery',
+      data: { email, expiresInSeconds: OTP_EXPIRY_MINUTES * 60, delivery: 'queued' },
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;
@@ -83,7 +110,7 @@ export const sendOtp = async (req, res) => {
 
 export const verifyOtpByEmail = async ({ email, otp }) => {
   const normalizedEmail = normalizeEmail(email);
-  const otpDoc = await OTP.findOne({ email: normalizedEmail }).select('+otp');
+  const otpDoc = await OTP.findOne({ email: normalizedEmail }).select('+otpHash');
 
   if (!otpDoc) {
     return { ok: false, statusCode: 400, message: 'OTP not found or expired' };
@@ -99,7 +126,7 @@ export const verifyOtpByEmail = async ({ email, otp }) => {
     return { ok: false, statusCode: 429, message: 'Maximum OTP attempts exceeded. Request a new OTP' };
   }
 
-  const isValid = await bcrypt.compare(otp, otpDoc.otp);
+  const isValid = safeEqualHex(hashOtp(otp), otpDoc.otpHash);
   if (!isValid) {
     otpDoc.attempts += 1;
     await otpDoc.save();
