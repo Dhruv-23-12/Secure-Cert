@@ -133,11 +133,6 @@ const certificateSchema = new mongoose.Schema(
   }
 );
 
-/**
- * Index for faster certificate lookup
- */
-certificateSchema.index({ certificateId: 1 });
-
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
 export default Certificate;

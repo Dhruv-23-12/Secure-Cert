@@ -35,8 +35,7 @@ const isAllowedOrigin = (origin) => {
   return false;
 };
 
-// Connect to MongoDB
-connectDB().then(async () => {
+const ensureAdminUser = async () => {
   try {
     // Ensure at least one admin user exists in the main users collection
     const existingAdminUser = await User.findOne({ role: 'admin' });
@@ -82,7 +81,7 @@ connectDB().then(async () => {
   } catch (err) {
     console.error('❌ Error ensuring default admin user:', err.message);
   }
-});
+};
 
 const corsOptions = {
   origin(origin, callback) {
@@ -109,6 +108,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Health check endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'SecureCert API root',
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -142,11 +148,16 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
+// Start server only after DB is connected
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 API available at http://localhost:${PORT}/api`);
-  console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
-});
+(async () => {
+  await connectDB();
+  await ensureAdminUser();
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📡 API available at http://localhost:${PORT}/api`);
+    console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
+  });
+})();
 
