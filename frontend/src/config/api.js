@@ -12,5 +12,11 @@ export function apiUrl(path) {
   if (!API_BASE_URL) return path;
 
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${normalizedPath}`;
+  const baseEndsWithApi = /\/api$/i.test(API_BASE_URL);
+  const pathStartsWithApi = /^\/api(\/|$)/i.test(normalizedPath);
+  const joinedPath = baseEndsWithApi && pathStartsWithApi
+    ? normalizedPath.replace(/^\/api/i, '')
+    : normalizedPath;
+
+  return `${API_BASE_URL}${joinedPath}`;
 }
