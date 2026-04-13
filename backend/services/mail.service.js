@@ -1,12 +1,34 @@
 import nodemailer from 'nodemailer';
 
+const cleanAppPassword = (value) => (value || '').replace(/\s+/g, '');
+
 const createTransporter = () => nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER,
-    pass: (process.env.EMAIL_PASS || '').replace(/\s+/g, ''),
+    pass: cleanAppPassword(process.env.EMAIL_PASS),
   },
 });
+
+const classifyMailError = (err) => {
+  const code = err?.code || err?.responseCode;
+  const message = String(err?.message || '');
+
+  // Common Gmail failures
+  if (code === 'EAUTH' || code === 535 || message.includes('Username and Password not accepted')) {
+    return 'Email auth failed (EAUTH). Regenerate a Gmail App Password and set EMAIL_PASS (no spaces).';
+  }
+  if (code === 'ETIMEDOUT' || message.toLowerCase().includes('timeout')) {
+    return 'Email delivery timed out. Try again (Render cold start/network) or switch to a transactional email provider.';
+  }
+  if (code === 'ENOTFOUND' || message.toLowerCase().includes('getaddrinfo')) {
+    return 'Email host resolution failed. Check Render networking/DNS.';
+  }
+
+  return 'Unable to send OTP email. Please try again.';
+};
 
 export const sendOtpEmail = async ({ to, otp, expiresInMinutes = 5 }) => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
@@ -41,6 +63,8 @@ export const sendOtpEmail = async ({ to, otp, expiresInMinutes = 5 }) => {
 
   try {
     const transporter = createTransporter();
+    // Optional preflight: fails fast on bad creds
+    await transporter.verify();
     await transporter.sendMail({
       from: `"SecureCert Security" <${process.env.EMAIL_USER}>`,
       to,
@@ -48,8 +72,12 @@ export const sendOtpEmail = async ({ to, otp, expiresInMinutes = 5 }) => {
       html,
     });
   } catch (err) {
-    console.error('OTP email send failed:', err.message);
-    const error = new Error('Unable to send OTP email. Please try again');
+    console.error('OTP email send failed:', {
+      code: err?.code,
+      responseCode: err?.responseCode,
+      message: err?.message,
+    });
+    const error = new Error(classifyMailError(err));
     error.statusCode = 503;
     throw error;
   }
