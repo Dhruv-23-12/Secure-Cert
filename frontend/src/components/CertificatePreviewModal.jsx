@@ -6,6 +6,7 @@ import HackathonCertificate from '../pages/HackathonCertificate';
 import SportsCertificate from '../pages/SportsCertificate';
 import Marksheet from '../pages/Marksheet';
 import GeneralCertificate from '../pages/GeneralCertificate';
+import { apiUrl } from '../config/api';
 
 export default function CertificatePreviewModal({ certificateData, onClose }) {
     const certificateRef = useRef(null);
@@ -134,7 +135,7 @@ export default function CertificatePreviewModal({ certificateData, onClose }) {
             // Use Server-Side Generation for real certificates
             try {
                 setDownloading(true);
-                const response = await fetch(`/api/cert/download/${certificateData.certificateId}`, {
+                const response = await fetch(apiUrl(`/api/cert/download/${certificateData.certificateId}`), {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/pdf',

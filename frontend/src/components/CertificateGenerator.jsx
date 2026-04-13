@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import CertificatePreviewModal from './CertificatePreviewModal';
+import { apiUrl } from '../config/api';
 
 export default function CertificateGenerator({ certificateType, onClose, onSuccess }) {
   const { user } = useAuth();
@@ -152,7 +153,7 @@ export default function CertificateGenerator({ certificateType, onClose, onSucce
       }
 
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/cert/create', {
+      const response = await fetch(apiUrl('/api/cert/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({

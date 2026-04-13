@@ -1,6 +1,8 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
 import connectDB from './config/db.js';
 import User from './models/User.js';
 import Admin from './models/Admin.js';
@@ -14,6 +16,10 @@ dotenv.config();
 
 // Initialize Express app
 const app = express();
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 // Connect to MongoDB
 connectDB().then(async () => {
@@ -66,7 +72,19 @@ connectDB().then(async () => {
 
 // Middleware
 // Enable CORS for frontend communication
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    // Allow requests with no origin (server-to-server calls, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
+app.use(helmet());
+app.use(morgan('combined'));
 
 // Parse JSON request bodies
 app.use(express.json());

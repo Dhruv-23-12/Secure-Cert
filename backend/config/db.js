@@ -6,10 +6,13 @@ import mongoose from 'mongoose';
  */
 const connectDB = async () => {
   try {
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI is missing');
+    }
+
     // Connect to MongoDB using the connection string from .env
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      // These options are recommended for Mongoose 6+
-      // useNewUrlParser and useUnifiedTopology are no longer needed
+      dbName: process.env.MONGODB_DB_NAME || undefined,
     });
 
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);

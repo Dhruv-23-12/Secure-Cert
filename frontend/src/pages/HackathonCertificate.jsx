@@ -1,12 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import QRCode from 'react-qr-code';
-
-const API_BASE_URL =
-  (typeof import.meta !== 'undefined' &&
-    import.meta.env &&
-    import.meta.env.VITE_API_URL) ||
-  'http://localhost:5000/api';
+import { apiUrl } from '../config/api';
 
 export default function HackathonCertificate({
   studentName: propStudentName,
@@ -29,7 +24,7 @@ export default function HackathonCertificate({
 
   useEffect(() => {
     if (id) {
-      fetch(`${API_BASE_URL}/cert/verify/${id}`)
+      fetch(apiUrl(`/api/cert/verify/${id}`))
         .then(res => res.json())
         .then(data => {
           if (data.success && data.data) {

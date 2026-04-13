@@ -10,6 +10,7 @@ import CertificateTypeSelector from '../components/CertificateTypeSelector';
 import CertificateGenerator from '../components/CertificateGenerator';
 import CertificatePreviewModal from '../components/CertificatePreviewModal';
 import jsQR from 'jsqr';
+import { apiUrl } from '../config/api';
 
 /* ── Static config ──────────────────────────────────────── */
 const tabs = [
@@ -84,7 +85,7 @@ export default function AdminDashboard() {
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/cert/stats', {
+      const res = await fetch(apiUrl('/api/cert/stats'), {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await res.json();
@@ -327,7 +328,7 @@ export default function AdminDashboard() {
     setVerifyError('');
     setVerifyResult(null);
     try {
-      const response = await fetch(`/api/cert/verify/${encodeURIComponent(certId)}`);
+      const response = await fetch(apiUrl(`/api/cert/verify/${encodeURIComponent(certId)}`));
       const data = await response.json();
       if (data.success) {
         setVerifyResult({ ...data.data, found: true });
@@ -357,7 +358,7 @@ export default function AdminDashboard() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch('/api/cert/list?limit=50', {
+      const response = await fetch(apiUrl('/api/cert/list?limit=50'), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -1302,7 +1303,7 @@ function AdminUploadSection({ onActivity }) {
       // Generate a temporary ID for the certificate request
       const tempId = generateIRN();
 
-      const response = await fetch('/api/cert/create', {
+      const response = await fetch(apiUrl('/api/cert/create'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
