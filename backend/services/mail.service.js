@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-const transporter = nodemailer.createTransport({
+const createTransporter = () => nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
@@ -40,6 +40,7 @@ export const sendOtpEmail = async ({ to, otp, expiresInMinutes = 5 }) => {
   </div>`;
 
   try {
+    const transporter = createTransporter();
     await transporter.sendMail({
       from: `"SecureCert Security" <${process.env.EMAIL_USER}>`,
       to,
@@ -47,6 +48,7 @@ export const sendOtpEmail = async ({ to, otp, expiresInMinutes = 5 }) => {
       html,
     });
   } catch (err) {
+    console.error('OTP email send failed:', err.message);
     const error = new Error('Unable to send OTP email. Please try again');
     error.statusCode = 503;
     throw error;

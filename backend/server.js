@@ -37,46 +37,43 @@ const isAllowedOrigin = (origin) => {
 
 const ensureAdminUser = async () => {
   try {
-    // Ensure at least one admin user exists in the main users collection
-    const existingAdminUser = await User.findOne({ role: 'admin' });
+    const adminEmail = (process.env.ADMIN_EMAIL || 'admin@example.com').toLowerCase().trim();
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
+    const syncAdminFromEnv = process.env.ADMIN_SYNC_FROM_ENV !== 'false';
 
-    if (!existingAdminUser) {
-      const adminEmail =
-        process.env.ADMIN_EMAIL || 'admin@example.com';
-      const adminPassword =
-        process.env.ADMIN_PASSWORD || 'Admin123!';
-
-      const createdUser = await User.create({
+    // Prefer env-configured admin user
+    let adminUser = await User.findOne({ email: adminEmail });
+    if (!adminUser) {
+      adminUser = await User.create({
         email: adminEmail,
         password: adminPassword,
         role: 'admin',
       });
+      console.log(`🔐 Admin user created: ${adminEmail}`);
+    } else {
+      // Ensure role is admin
+      if (adminUser.role !== 'admin') {
+        adminUser.role = 'admin';
+      }
 
-      console.log('🔐 Default admin user created in users collection:');
-      console.log(`   Email: ${adminEmail}`);
-      console.log(`   Password: ${adminPassword}`);
-      console.log('   (Change these in production using ADMIN_EMAIL/ADMIN_PASSWORD env vars)');
+      // Keep DB password in sync with env when enabled
+      if (syncAdminFromEnv) {
+        adminUser.password = adminPassword;
+      }
 
-      // Also mirror into the admins collection for easier viewing
+      await adminUser.save();
+      console.log(`🔐 Admin user synced: ${adminEmail}`);
+    }
+
+    // Keep admins collection mirrored
+    const existingAdminDoc = await Admin.findOne({ email: adminUser.email });
+    if (!existingAdminDoc) {
       await Admin.create({
-        email: createdUser.email,
+        email: adminUser.email,
         password: adminPassword,
         role: 'admin',
       });
       console.log('📁 Admin entry mirrored to admins collection.');
-    } else {
-      console.log(`🔐 Admin user already exists in users collection: ${existingAdminUser.email}`);
-
-      // Ensure there is an entry in the admins collection as well
-      const existingAdminDoc = await Admin.findOne({ email: existingAdminUser.email });
-      if (!existingAdminDoc) {
-        await Admin.create({
-          email: existingAdminUser.email,
-          password: 'Admin123!',
-          role: 'admin',
-        });
-        console.log('📁 Existing admin mirrored to admins collection (password hash handled by model).');
-      }
     }
   } catch (err) {
     console.error('❌ Error ensuring default admin user:', err.message);
