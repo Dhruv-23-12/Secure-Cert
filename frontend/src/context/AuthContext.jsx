@@ -79,12 +79,29 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const verifyOTP = async (userId, code) => {
+  const sendOTP = async (email) => {
+    try {
+      const response = await fetch(apiUrl('/api/auth/send-otp'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        return { success: false, message: data?.message || 'Failed to send OTP' };
+      }
+      return { success: true, message: data.message };
+    } catch {
+      return { success: false, message: 'Error sending OTP' };
+    }
+  };
+
+  const verifyOTP = async ({ email, code, userId }) => {
     try {
       const response = await fetch(apiUrl('/api/auth/verify-2fa'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, code })
+        body: JSON.stringify({ email, userId, code })
       });
       const data = await response.json();
 
@@ -100,7 +117,11 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('token', data.data.token);
         return { success: true };
       } else {
-        return { success: false, message: data.message || 'Verification failed' };
+        return {
+          success: false,
+          message: data.message || 'Verification failed',
+          attemptsLeft: data.attemptsLeft,
+        };
       }
     } catch (error) {
       return { success: false, message: 'Error verifying OTP' };
@@ -117,6 +138,7 @@ export const AuthProvider = ({ children }) => {
     user,
     loading,
     login,
+    sendOTP,
     verifyOTP,
     logout,
   };

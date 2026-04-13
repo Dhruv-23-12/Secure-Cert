@@ -25,14 +25,6 @@ const userSchema = new mongoose.Schema(
       enum: ['admin', 'user'],
       default: 'user',
     },
-    otpCode: {
-      type: String,
-      select: false,
-    },
-    otpExpires: {
-      type: Date,
-      select: false,
-    },
   },
   {
     timestamps: true, // Automatically adds createdAt and updatedAt fields

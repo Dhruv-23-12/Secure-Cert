@@ -7,7 +7,7 @@ import otpAnimation from '../assets/animations/otp.json';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, verifyOTP } = useAuth();
+  const { login, verifyOTP, sendOTP } = useAuth();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -49,27 +49,22 @@ export default function Login() {
     return () => clearInterval(interval);
   }, [canResend, resendTimer]);
 
-  // Generate a fixed 2FA code for testing
-  const generate2FACode = () => {
-    // For testing purposes, always return "123456"
-    return "123456";
-  };
-
   const handleResendCode = async () => {
     if (!canResend || !tempUserData) return;
 
     setLoading(true);
     try {
-      const code = generate2FACode();
-      // In a real app, you would send this code via email/SMS
-      console.log('New 2FA Code for admin:', code);
-      setTempUserData(prev => ({ ...prev, code }));
-      setTwoFATimer(600); // 10 minutes
+      const resendResult = await sendOTP(tempUserData.email);
+      if (!resendResult.success) {
+        setError(resendResult.message || 'Failed to resend code. Please try again.');
+        return;
+      }
+      setTwoFATimer(300); // 5 minutes
       setResendTimer(60);
       setCanResend(false);
       setError('');
       setTwoFACode(['', '', '', '', '', '']);
-    } catch (err) {
+    } catch {
       setError('Failed to resend code. Please try again.');
     } finally {
       setLoading(false);
@@ -125,7 +120,7 @@ export default function Login() {
           // Backend requested 2FA
           setTempUserData({ userId: result.userId, email: result.email }); // Store userId for verification
           setShow2FA(true);
-          setTwoFATimer(600); // 10 minutes Matches backend
+          setTwoFATimer(300); // 5 minutes
           setResendTimer(60);
           setCanResend(false);
         } else {
@@ -146,7 +141,7 @@ export default function Login() {
 
   const handle2FASubmit = async (e) => {
     e.preventDefault();
-    if (!tempUserData?.userId) return;
+    if (!tempUserData?.email) return;
 
     const code = twoFACode.join('');
     if (code.length !== 6) {
@@ -156,7 +151,11 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const result = await verifyOTP(tempUserData.userId, code);
+      const result = await verifyOTP({
+        email: tempUserData.email,
+        userId: tempUserData.userId,
+        code,
+      });
 
       if (result.success) {
         const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
@@ -170,11 +169,14 @@ export default function Login() {
         }
       } else {
         setAttempts(prev => prev + 1);
-        setError(result.message || 'Invalid code');
+        const attemptsHint = Number.isInteger(result.attemptsLeft)
+          ? ` Attempts left: ${result.attemptsLeft}.`
+          : '';
+        setError(`${result.message || 'Invalid code'}${attemptsHint}`);
         setTwoFACode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred during verification');
     } finally {
       setLoading(false);

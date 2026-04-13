@@ -6,12 +6,13 @@ import mongoose from 'mongoose';
  */
 const connectDB = async () => {
   try {
-    if (!process.env.MONGODB_URI) {
-      throw new Error('MONGODB_URI is missing');
+    const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+    if (!mongoUri) {
+      throw new Error('MONGODB_URI or MONGO_URI is missing');
     }
 
     // Connect to MongoDB using the connection string from .env
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+    const conn = await mongoose.connect(mongoUri, {
       dbName: process.env.MONGODB_DB_NAME || undefined,
     });
 

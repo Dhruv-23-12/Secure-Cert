@@ -20,6 +20,18 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const localhostOrigins = ['http://localhost:5173', 'http://localhost:3000'];
+const allowLocalhostCors =
+  process.env.NODE_ENV !== 'production' || process.env.ALLOW_LOCALHOST_CORS === 'true';
+const allowVercelPreview = process.env.ALLOW_VERCEL_PREVIEW_CORS === 'true';
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (allowLocalhostCors && localhostOrigins.includes(origin)) return true;
+  if (allowVercelPreview && /^https:\/\/.*\.vercel\.app$/.test(origin)) return true;
+  return false;
+};
 
 // Connect to MongoDB
 connectDB().then(async () => {
@@ -70,19 +82,21 @@ connectDB().then(async () => {
   }
 });
 
-// Middleware
-// Enable CORS for frontend communication
-app.use(cors({
+const corsOptions = {
   origin(origin, callback) {
     // Allow requests with no origin (server-to-server calls, Postman)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-}));
+};
+
+// Middleware
+// Enable CORS for frontend communication
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(helmet());
 app.use(morgan('combined'));
 

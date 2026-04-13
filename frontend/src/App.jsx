@@ -112,7 +112,7 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router future={{ v7_relativeSplatPath: true }}>
         <AppContent />
       </Router>
     </AuthProvider>

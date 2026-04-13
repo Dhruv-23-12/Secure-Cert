@@ -62,7 +62,7 @@ function AnimatedShield() {
 
 export default function AdminLogin() {
   const navigate = useNavigate();
-  const { login, user } = useAuth();
+  const { login, user, verifyOTP, sendOTP } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -124,10 +124,23 @@ export default function AdminLogin() {
   }, [attempts]);
 
   const handleResendCode = async () => {
-    setTwoFATimer(30);
-    setResendTimer(60);
-    setCanResend(false);
-    setError('Code resend simulation: Check console/email if implemented.');
+    if (!canResend || !tempUserData?.email) return;
+
+    setLoading(true);
+    try {
+      const resendResult = await sendOTP(tempUserData.email);
+      if (!resendResult.success) {
+        setError(resendResult.message || 'Failed to resend OTP.');
+        return;
+      }
+      setTwoFATimer(300);
+      setResendTimer(60);
+      setCanResend(false);
+      setError('');
+      setTwoFACode(['', '', '', '', '', '']);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCodeChange = (index, value) => {
@@ -174,7 +187,7 @@ export default function AdminLogin() {
         if (result.require2FA) {
           setTempUserData({ userId: result.userId, email: result.email });
           setShow2FA(true);
-          setTwoFATimer(600);
+          setTwoFATimer(300);
           setResendTimer(60);
           setCanResend(false);
         } else {
@@ -196,11 +209,9 @@ export default function AdminLogin() {
     }
   };
 
-  const { verifyOTP } = useAuth();
-
   const handle2FASubmit = async (e) => {
     e.preventDefault();
-    if (!tempUserData?.userId) return;
+    if (!tempUserData?.email) return;
 
     const code = twoFACode.join('');
     if (code.length !== 6) {
@@ -210,7 +221,11 @@ export default function AdminLogin() {
 
     setLoading(true);
     try {
-      const result = await verifyOTP(tempUserData.userId, code);
+      const result = await verifyOTP({
+        email: tempUserData.email,
+        userId: tempUserData.userId,
+        code,
+      });
 
       if (result.success) {
         const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
@@ -220,11 +235,14 @@ export default function AdminLogin() {
           setError('Access denied: Admin privileges required.');
         }
       } else {
-        setError(result.message || 'Invalid code. Please try again.');
+        const attemptsHint = Number.isInteger(result.attemptsLeft)
+          ? ` Attempts left: ${result.attemptsLeft}.`
+          : '';
+        setError(`${result.message || 'Invalid code. Please try again.'}${attemptsHint}`);
         setTwoFACode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
-    } catch (err) {
+    } catch {
       setError('Verification failed. Please try again.');
     } finally {
       setLoading(false);
