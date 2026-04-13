@@ -10,7 +10,9 @@ const transporter = nodemailer.createTransport({
 
 export const sendOtpEmail = async ({ to, otp, expiresInMinutes = 5 }) => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    throw new Error('EMAIL_USER or EMAIL_PASS is missing');
+    const error = new Error('Email service is not configured. Set EMAIL_USER and EMAIL_PASS');
+    error.statusCode = 503;
+    throw error;
   }
 
   const html = `
@@ -37,10 +39,16 @@ export const sendOtpEmail = async ({ to, otp, expiresInMinutes = 5 }) => {
     </div>
   </div>`;
 
-  await transporter.sendMail({
-    from: `"SecureCert Security" <${process.env.EMAIL_USER}>`,
-    to,
-    subject: 'Your SecureCert OTP Code',
-    html,
-  });
+  try {
+    await transporter.sendMail({
+      from: `"SecureCert Security" <${process.env.EMAIL_USER}>`,
+      to,
+      subject: 'Your SecureCert OTP Code',
+      html,
+    });
+  } catch (err) {
+    const error = new Error('Unable to send OTP email. Please try again');
+    error.statusCode = 503;
+    throw error;
+  }
 };

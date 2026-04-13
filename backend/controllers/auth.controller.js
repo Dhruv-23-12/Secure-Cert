@@ -113,7 +113,14 @@ export const login = async (req, res) => {
     }
 
     // Enforce OTP step for all users after password verification
-    await issueOtpForEmail(user.email);
+    try {
+      await issueOtpForEmail(user.email);
+    } catch (otpError) {
+      return res.status(otpError.statusCode || 503).json({
+        success: false,
+        message: otpError.message || 'Unable to send OTP at the moment',
+      });
+    }
 
     // Return response indicating 2FA required
     res.status(200).json({
@@ -128,7 +135,6 @@ export const login = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error during login',
-      error: error.message,
     });
   }
 };
