@@ -473,10 +473,10 @@ export default function VerifyCertificate() {
           <div className="w-full max-w-xl bg-white rounded-xl shadow-lg p-6 mb-10">
             <h2 className="text-lg font-semibold mb-1">Verify Certificate</h2>
             <p className="text-gray-500 text-sm mb-4">
-              Enter the certificate reference number or scan the QR code
+              Scan the QR code
             </p>
             <div className="flex mb-4 rounded-lg overflow-hidden border border-gray-200">
-              <button
+              {/* <button
                 className={`flex-1 py-2 text-sm font-semibold transition-colors ${tab === 'reference'
                   ? 'bg-indigo-50 text-indigo-700'
                   : 'bg-white text-gray-500'
@@ -484,7 +484,7 @@ export default function VerifyCertificate() {
                 onClick={() => setTab('reference')}
               >
                 Reference Number
-              </button>
+              </button> */}
               <button
                 className={`flex-1 py-2 text-sm font-semibold transition-colors ${tab === 'qr'
                   ? 'bg-indigo-50 text-indigo-700'
@@ -495,7 +495,7 @@ export default function VerifyCertificate() {
                 QR Code
               </button>
             </div>
-            {tab === 'reference' ? (
+            {/* {tab === 'reference' ? (
               <>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Certificate Reference Number (IRN)
@@ -508,7 +508,7 @@ export default function VerifyCertificate() {
                   onChange={e => setReference(e.target.value)}
                 />
               </>
-            ) : (
+            ) : ( */}
               <>
                 {/* QR Code Mode Toggle */}
                 <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -814,7 +814,7 @@ export default function VerifyCertificate() {
                   </>
                 )}
               </>
-            )}
+            
             {/* Primary verify button centered below input / upload section */}
             <div className="mt-6 flex justify-center">
               <button
